@@ -144,6 +144,9 @@ python3 tools/make-icon.py     # every launcher mipmap
 python3 tools/make-banner.py   # docs/banner.png, docs/social-preview.png
 ```
 
+Both read `assets-src/` and `composeResources/`, so the docs images are built
+from the same leather, paper and Cinzel the app paints with.
+
 </details>
 
 <details>
