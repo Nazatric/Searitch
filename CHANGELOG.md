@@ -9,8 +9,10 @@ of Congress join it — public domain or CC0, no keys.
 
 **Filters are only applied where they can be.** Selecting a colour searches the
 three sources that filter by colour and skips the ones with no colour data;
-selecting a licence searches only the sources that publish one. Nothing is
-guessed, and nothing is passed off as licensed when it isn't.
+selecting a licence searches only the sources that publish one. Orientation and
+size are tested against the dimensions a source reports — an image of unknown
+size is left out rather than counted as a match. Nothing is guessed, and nothing
+is passed off as licensed when it isn't.
 
 **Similar images use the subject.** Related sets come from the source's tags, or
 from the subject words of the title with catalogue noise removed.
