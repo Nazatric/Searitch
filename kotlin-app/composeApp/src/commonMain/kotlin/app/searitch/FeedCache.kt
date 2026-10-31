@@ -34,9 +34,29 @@ object FeedCache {
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
-    private val memory = object : LinkedHashMap<String, CachedFeed>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedFeed>?) =
-            size > MEMORY_LIMIT
+    /*
+     * All reads/writes happen on the UI dispatcher (the cache is written from a
+     * composition-scoped coroutine), so a plain map is enough — and it keeps the
+     * LRU portable: kotlin.collections.LinkedHashMap isn't an open class on the
+     * JS/Wasm targets, so eviction is tracked explicitly instead.
+     */
+    private val memory = HashMap<String, CachedFeed>()
+    private val order = ArrayDeque<String>()
+
+    private fun touch(key: String, feed: CachedFeed) {
+        memory[key] = feed
+        order.remove(key)
+        order.addLast(key)
+        while (order.size > MEMORY_LIMIT) {
+            val cold = order.removeFirst()
+            memory.remove(cold)
+        }
+    }
+
+    private fun read(key: String): CachedFeed? {
+        val hit = memory[key] ?: return null
+        touch(key, hit)
+        return hit
     }
 
     private val pending = mutableSetOf<String>()
@@ -54,21 +74,24 @@ object FeedCache {
 
     private fun fileName(key: String) = "feed-$key.json"
 
-    fun peek(key: String): CachedFeed? = synchronized(memory) { memory[key] }
+    fun peek(key: String): CachedFeed? = read(key)
 
     /** Memory first, then disk. Null when nothing usable is stored. */
     suspend fun load(key: String): CachedFeed? {
-        synchronized(memory) { memory[key] }?.let { return it }
+        read(key)?.let { return it }
         val raw = PlatformStore.readFile(fileName(key)) ?: return null
         val feed = runCatching { json.decodeFromString(CachedFeed.serializer(), raw) }.getOrNull()
             ?: return null
-        if (now() - feed.savedAt > USABLE_MS) return null
-        synchronized(memory) { memory[key] = feed }
+        // a clock that went backwards (fresh process on web) means "unknown age":
+        // keep it usable but never treat it as fresh
+        val age = now() - feed.savedAt
+        if (age > USABLE_MS) return null
+        touch(key, feed)
         return feed
     }
 
     fun store(key: String, feed: CachedFeed, persist: Boolean, scope: CoroutineScope?) {
-        synchronized(memory) { memory[key] = feed }
+        touch(key, feed)
         if (!persist || scope == null) return
         // one write in flight per feed is enough; the newest state wins next time
         if (!pending.add(key)) return
@@ -85,13 +108,17 @@ object FeedCache {
     }
 
     suspend fun clearAll() {
-        synchronized(memory) { memory.clear() }
+        memory.clear()
+        order.clear()
         PlatformStore.clearFiles()
     }
 
     suspend fun sizeBytes(): Long = PlatformStore.filesSize()
 
-    fun isFresh(feed: CachedFeed): Boolean = now() - feed.savedAt <= FRESH_MS
+    fun isFresh(feed: CachedFeed): Boolean {
+        val age = now() - feed.savedAt
+        return age in 0..FRESH_MS
+    }
 
     private fun now(): Long = currentTimeMillis()
 

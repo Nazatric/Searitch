@@ -162,7 +162,7 @@ class SettingsState(initial: AppSettings = AppSettings()) {
     var value by mutableStateOf(initial)
         private set
 
-    val palette: Palette by mutableStateOf(paletteFor(initial))
+    var palette: Palette by mutableStateOf(paletteFor(initial))
         private set
 
     fun update(transform: (AppSettings) -> AppSettings) {

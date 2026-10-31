@@ -78,15 +78,16 @@ private val SKELETON_RATIOS = listOf(1.5f, 0.75f, 1.1f, 0.7f, 1.35f, 0.9f)
 /** Similar-image sets are kept for the session so re-opening a photo is instant. */
 private object RelatedCache {
     private const val LIMIT = 40
-    private val map = object : LinkedHashMap<String, List<SearitchImage>>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<SearitchImage>>?) =
-            size > LIMIT
-    }
+    private val map = HashMap<String, List<SearitchImage>>()
+    private val order = ArrayDeque<String>()
 
-    fun get(id: String): List<SearitchImage>? = synchronized(map) { map[id] }
+    fun get(id: String): List<SearitchImage>? = map[id]
 
     fun put(id: String, list: List<SearitchImage>) {
-        synchronized(map) { map[id] = list }
+        map[id] = list
+        order.remove(id)
+        order.addLast(id)
+        while (order.size > LIMIT) map.remove(order.removeFirst())
     }
 }
 

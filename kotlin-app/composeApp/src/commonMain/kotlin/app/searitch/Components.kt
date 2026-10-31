@@ -214,9 +214,10 @@ fun tiltOf(id: String): Float {
 @Composable
 fun PhotoCard(img: SearitchImage, index: Int, onClick: (SearitchImage) -> Unit) {
     // Only the first screenful animates in; anything later just exists.
-    var entered by remember(img.id) { mutableStateOf(index >= 24) }
-    LaunchedEffect(img.id) {
-        if (!LocalSettings.current.value.motion) { entered = true; return@LaunchedEffect }
+    val motionOn = LocalSettings.current.value.motion
+    var entered by remember(img.id) { mutableStateOf(index >= 24 || !motionOn) }
+    LaunchedEffect(img.id, motionOn) {
+        if (!motionOn) { entered = true; return@LaunchedEffect }
         if (!entered) {
             delay((index % 10) * 40L)
             entered = true
