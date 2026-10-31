@@ -5,6 +5,29 @@ APKs, signed, with the keystore and checksums attached.
 
 ---
 
+## v0.7 — 31 Oct 2026
+
+`versionCode 7` · `versionName 1.4.0`
+
+**Settings sits on the hide again.**
+
+- The sheet was filled with a flat colour while the cards on it were textured,
+  which is why it read as a different app. It is the same tiled hide as the home
+  screen now — same grain, same sheen — with the status-bar inset respected so
+  the title never runs under the clock.
+- Switches went back to the paper trough with the brass knob. The dark leather
+  channel they had become looked like a black pill dropped into the card. The
+  trough is the same debossed field as the search bar; the knob is the same
+  metal as every other control.
+- New in Settings → Home screen: a brass slider with three detents that moves
+  the search bar to the top, middle or bottom of the landing screen. The
+  wordmark travels with it, so the page stays balanced.
+- The app icon is the magnifier photograph you sent, used as it is — no
+  regenerating, no recolouring — cut for every density, with a full-bleed
+  adaptive icon for Android 8+.
+
+---
+
 ## v0.6 — 31 Oct 2026
 
 `versionCode 6` · `versionName 1.3.1`
