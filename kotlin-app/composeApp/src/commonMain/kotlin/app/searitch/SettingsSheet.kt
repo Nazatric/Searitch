@@ -77,6 +77,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 /**
@@ -266,7 +267,7 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
     if (!open) return
     val holder = LocalSettings.current
     val draft = holder.value
-    fun set(next: AppSettings) = holder.save(next)
+    fun update(next: AppSettings) = holder.save(next)
     var cacheBytes by remember { mutableStateOf(0L) }
     var cacheBusy by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -334,7 +335,7 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SearitchChip("Defaults", selected = false) { set(AppSettings()) }
+                    SearitchChip("Defaults", selected = false) { update(AppSettings()) }
                     SearitchChip("Done", selected = true) { close() }
                 }
             }
@@ -346,7 +347,7 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
             Card("HOME SCREEN") {
                 PositionSlider(
                     value = draft.homeBar,
-                    onChange = { set(draft.copy(homeBar = it)) },
+                    onChange = { update(draft.copy(homeBar = it)) },
                 )
                 Hint("Where the search bar sits on the landing screen.")
             }
@@ -357,41 +358,41 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
                     BarPlacement.entries,
                     draft.barPlacement,
                     { it.label },
-                ) { set(draft.copy(barPlacement = it)) }
+                ) { update(draft.copy(barPlacement = it)) }
                 Hint("Bottom dock keeps the field under your thumb while you scroll.")
             }
 
             Card("GALLERY") {
                 OptionRow("Card density", GridDensity.entries, draft.gridDensity, { it.label }) {
-                    set(draft.copy(gridDensity = it))
+                    update(draft.copy(gridDensity = it))
                 }
                 OptionRow("Card style", CardStyle.entries, draft.cardStyle, { it.label }) {
-                    set(draft.copy(cardStyle = it))
+                    update(draft.copy(cardStyle = it))
                 }
                 ToggleRow("Similar images under a photo", draft.related) {
-                    set(draft.copy(related = it))
+                    update(draft.copy(related = it))
                 }
             }
 
             Card("MATERIALS") {
                 ToneRow("Leather", draft.leather, LeatherTone.entries, { it.label }, { it.base }) {
-                    set(draft.copy(leather = it))
+                    update(draft.copy(leather = it))
                 }
                 ToneRow("Paper", draft.paper, PaperTone.entries, { it.label }, { it.base }) {
-                    set(draft.copy(paper = it))
+                    update(draft.copy(paper = it))
                 }
                 ToneRow("Metal", draft.brass, BrassTone.entries, { it.label }, { it.base }) {
-                    set(draft.copy(brass = it))
+                    update(draft.copy(brass = it))
                 }
                 ToggleRow("Real hide & paper textures", draft.textures) {
-                    set(draft.copy(textures = it))
+                    update(draft.copy(textures = it))
                 }
                 Hint("Turning textures off saves memory on older phones.")
             }
 
             Card("MOTION & FEEL") {
-                ToggleRow("Animations", draft.motion) { set(draft.copy(motion = it)) }
-                ToggleRow("Haptics", draft.haptics) { set(draft.copy(haptics = it)) }
+                ToggleRow("Animations", draft.motion) { update(draft.copy(motion = it)) }
+                ToggleRow("Haptics", draft.haptics) { update(draft.copy(haptics = it)) }
             }
 
             Card("DOWNLOADS") {
@@ -400,23 +401,23 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
                     DownloadQuality.entries,
                     draft.downloadQuality,
                     { it.label },
-                ) { set(draft.copy(downloadQuality = it)) }
+                ) { update(draft.copy(downloadQuality = it)) }
                 Hint(draft.downloadQuality.hint + " Saved to Download/Searitch.")
             }
 
             Card("SEARCH DEFAULTS") {
                 ToggleRow("Safe search on by default", draft.defaultSafe) {
-                    set(draft.copy(defaultSafe = it))
+                    update(draft.copy(defaultSafe = it))
                 }
                 ToggleRow("Block AI images by default", draft.defaultAntiAi) {
-                    set(draft.copy(defaultAntiAi = it))
+                    update(draft.copy(defaultAntiAi = it))
                 }
                 Hint("Applies to new searches. Filter chips in the field still override per search.")
             }
 
             Card("CACHE") {
                 ToggleRow("Keep searched feeds", draft.cacheFeeds) {
-                    set(draft.copy(cacheFeeds = it))
+                    update(draft.copy(cacheFeeds = it))
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
