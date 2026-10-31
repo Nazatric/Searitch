@@ -139,6 +139,18 @@ jobs:
           for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk"); do
             base=$(basename "$apk")
             echo "--- $base"
+            "$BT/aapt2" dump badging "$apk" > "out/badging-$base.txt" 2>/dev/null || true
+            {
+              echo "### \`$name\`"
+              echo
+              echo "ABIs in package:"
+              unzip -l "$apk" | awk '{print $4}' | grep -E '^lib/' | cut -d/ -f2 | sort -u | sed 's/^/- \`/;s/$/\`/' || true
+              echo
+              echo "Package metadata:"
+              echo '```'
+              grep -E "^package:|^sdkVersion:|^targetSdkVersion:|^application-label:|^native-code:" "out/badging-$base.txt" || true
+              echo '```'
+            } > "out/verify-$base.md"
             unzip -l "$apk" | awk '{print $4}' | grep -E '^lib/' | cut -d/ -f2 | sort -u | sed 's/^/    abi: /' || true
             aligned="out/aligned-$base"
             "$BT/zipalign" -f -p 4 "$apk" "$aligned"
@@ -151,7 +163,16 @@ jobs:
               --ks-pass pass:searitch2026 --key-pass pass:searitch2026 \
               --ks-key-alias searitch --out "out/$name" "$aligned"
             "$BT/apksigner" verify --print-certs "out/$name" | head -3
+            {
+              echo
+              echo "Signature:"
+              echo '```'
+              "$BT/apksigner" verify --print-certs "out/$name" | grep -E "Signer #1 certificate (DN|SHA-256)" || true
+              echo '```'
+              echo
+            } >> "out/verify-$base.md"
           done
+          cat out/verify-*.md > out/verify.md
           echo "=== signed artifacts ==="
           ls -lh out
           sha256sum out/*.apk | tee out/SHA256SUMS.txt
@@ -181,7 +202,20 @@ jobs:
           - `SHA256SUMS.txt`
 
           Package: `app.searitch` · versionName `1.0.0` · minSdk 24 · targetSdk 35
+
+          ## Build notes
+
+          - Source came from `searitch-universal-image-search-app.zip`; no zipped file was edited.
+            The archive ships no `composeResources/` tree even though `Theme.kt` imports
+            `cinzel_bold`, `leather` and `paper`, so CI recovered those exact assets from the
+            web app's generated `src/app/textures.css` (WOFF2 → TTF, WebP → PNG) to make the
+            Kotlin sources compile.
+          - APKs are signed with a throwaway key generated per build; the keystore is attached.
+
+          ## Verification
+
           EOF
+          cat out/verify.md >> notes.md
           gh release view "$TAG" > /dev/null 2>&1 && gh release delete "$TAG" --yes --cleanup-tag || true
           gh release create "$TAG" \
             --title "Searitch $TAG" \
