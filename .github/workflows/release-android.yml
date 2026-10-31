@@ -125,57 +125,59 @@ jobs:
           { echo "Run: $GITHUB_RUN_ID ($GITHUB_SHA)"; echo '```'; tail -n 250 "$LOG"; echo '```'; } > diag.md
           gh issue create --title "CI diagnostics $GITHUB_RUN_ID" --body-file diag.md || true
 
-      - name: Sign APKs
+      - name: Sign APKs and verify them
         run: |
           set -euo pipefail
-          SDK="${ANDROID_HOME}"
-          BT="$SDK/build-tools/35.0.0"
+          BT="$ANDROID_HOME/build-tools/35.0.0"
           mkdir -p out
           keytool -genkeypair -v \
             -keystore out/searitch-release.keystore \
             -storepass searitch2026 -keypass searitch2026 \
             -alias searitch -keyalg RSA -keysize 2048 -validity 10950 \
             -dname "CN=Searitch, OU=Searitch, O=Searitch, L=Unknown, S=Unknown, C=IN" > /dev/null 2>&1
-          for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk"); do
+
+          : > out/verify.md
+          for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk" | sort); do
             base=$(basename "$apk")
-            echo "--- $base"
+            case "$base" in
+              *arm64*)   name="Searitch-v0.1-arm64-v8a.apk" ;;
+              *armeabi*) name="Searitch-v0.1-armeabi-v7a.apk" ;;
+              *)         name="Searitch-v0.1-$base" ;;
+            esac
+            echo "--- $base -> $name"
+
+            abis=$(unzip -l "$apk" | awk '{print $4}' | grep -E '^lib/' | cut -d/ -f2 | sort -u)
+            echo "    ABIs: $(echo "$abis" | tr '\n' ' ')"
+
+            "$BT/zipalign" -f -p 4 "$apk" "out/aligned-$base"
+            "$BT/apksigner" sign --ks out/searitch-release.keystore \
+              --ks-pass pass:searitch2026 --key-pass pass:searitch2026 \
+              --ks-key-alias searitch --out "out/$name" "out/aligned-$base"
+            "$BT/apksigner" verify --verbose "out/$name" > "out/sig-$base.txt" 2>&1
+            sig_ok=yes; "$BT/apksigner" verify "out/$name" || sig_ok=no
             "$BT/aapt2" dump badging "$apk" > "out/badging-$base.txt" 2>/dev/null || true
+
             {
               echo "### \`$name\`"
               echo
-              echo "ABIs in package:"
-              unzip -l "$apk" | awk '{print $4}' | grep -E '^lib/' | cut -d/ -f2 | sort -u | sed 's/^/- \`/;s/$/\`/' || true
+              echo "| property | value |"
+              echo "| --- | --- |"
+              echo "| ABI(s) in package | $(echo "$abis" | paste -sd, -) |"
+              echo "| size | $(stat -c%s "out/$name") bytes |"
+              echo "| package | $(grep -m1 '^package:' "out/badging-$base.txt" | sed "s/package: //") |"
+              echo "| min/target SDK | $(grep -m1 '^sdkVersion:' "out/badging-$base.txt" | sed "s/sdkVersion: //") / $(grep -m1 '^targetSdkVersion:' "out/badging-$base.txt" | sed "s/targetSdkVersion: //") |"
+              echo "| signature | $(grep -m1 'Signer #1 certificate SHA-256 digest:' "out/sig-$base.txt" | sed "s/.*digest: //") |"
+              echo "| signature verifies | $sig_ok |"
               echo
-              echo "Package metadata:"
-              echo '```'
-              grep -E "^package:|^sdkVersion:|^targetSdkVersion:|^application-label:|^native-code:" "out/badging-$base.txt" || true
-              echo '```'
-            } > "out/verify-$base.md"
-            unzip -l "$apk" | awk '{print $4}' | grep -E '^lib/' | cut -d/ -f2 | sort -u | sed 's/^/    abi: /' || true
-            aligned="out/aligned-$base"
-            "$BT/zipalign" -f -p 4 "$apk" "$aligned"
-            case "$base" in
-              *arm64*) name="Searitch-v0.1-arm64-v8a.apk" ;;
-              *armeabi*) name="Searitch-v0.1-armeabi-v7a.apk" ;;
-              *) name="Searitch-v0.1-$base" ;;
-            esac
-            "$BT/apksigner" sign --ks out/searitch-release.keystore \
-              --ks-pass pass:searitch2026 --key-pass pass:searitch2026 \
-              --ks-key-alias searitch --out "out/$name" "$aligned"
-            "$BT/apksigner" verify --print-certs "out/$name" | head -3
-            {
-              echo
-              echo "Signature:"
-              echo '```'
-              "$BT/apksigner" verify --print-certs "out/$name" | grep -E "Signer #1 certificate (DN|SHA-256)" || true
-              echo '```'
-              echo
-            } >> "out/verify-$base.md"
+            } >> out/verify.md
           done
-          cat out/verify-*.md > out/verify.md
+
+          rm -f out/aligned-*.apk out/sig-*.txt out/badging-*.txt
           echo "=== signed artifacts ==="
           ls -lh out
           sha256sum out/*.apk | tee out/SHA256SUMS.txt
+          echo "=== verification ==="
+          cat out/verify.md
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
