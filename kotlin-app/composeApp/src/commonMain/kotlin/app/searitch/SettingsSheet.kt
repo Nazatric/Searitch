@@ -50,6 +50,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
@@ -125,13 +126,20 @@ fun GearButton(onClick: () -> Unit, open: Boolean, modifier: Modifier = Modifier
     }
 }
 
-/** Full customisation sheet. Edits a draft, applies on close so the app never
- *  flickers through half-finished states while the user is exploring. */
+/**
+ * Full customisation sheet.
+ *
+ * Every control applies immediately — the tone/texture/density behind the sheet
+ * repaints as you tap, which is the only honest way to judge a material. The
+ * sheet is deliberately not a "draft + Apply" form: that hid the effect of half
+ * the settings behind a button press.
+ */
 @Composable
 fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
     if (!open) return
     val holder = LocalSettings.current
-    var draft by remember { mutableStateOf(holder.value) }
+    val draft = holder.value
+    fun set(next: AppSettings) = holder.save(next)
     var cacheBytes by remember { mutableStateOf(0L) }
     var cacheBusy by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -142,16 +150,12 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
         cacheBytes = runCatching { FeedCache.sizeBytes() }.getOrDefault(0L)
     }
 
-    fun applyAndClose() {
-        holder.save(draft)
+    fun close() {
         scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
     }
 
     ModalBottomSheet(
-        onDismissRequest = {
-            holder.save(draft)
-            onDismiss()
-        },
+        onDismissRequest = { onDismiss() },
         sheetState = sheetState,
         containerColor = LocalPalette.current.leatherBase,
         dragHandle = {
@@ -160,7 +164,7 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
                     .padding(vertical = 10.dp)
                     .size(width = 44.dp, height = 5.dp)
                     .clip(CircleShape)
-                    .background(DefaultPalette.onLeather.copy(alpha = 0.45f)),
+                    .background(Ink.onLeather.copy(alpha = 0.45f)),
             )
         },
     ) {
@@ -181,7 +185,7 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
                     Text(
                         "SETTINGS",
                         style = TextStyle(
-                            color = DefaultPalette.onLeather,
+                            color = Ink.onLeather,
                             fontFamily = cinzel(),
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
@@ -190,13 +194,20 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
                     )
                     Text(
                         "Make it yours",
-                        color = DefaultPalette.onLeatherSoft,
+                        color = Ink.onLeatherSoft,
                         fontSize = 11.sp,
                         letterSpacing = 1.5.sp,
                     )
                 }
-                SearitchChip("Done", selected = true) { applyAndClose() }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SearitchChip("Defaults", selected = false) { set(AppSettings()) }
+                    SearitchChip("Done", selected = true) { close() }
+                }
             }
+
+            // A live sample: the chosen hide, stock and metal rendered exactly as
+            // the app paints them, so a tone is judged on the real thing.
+            MaterialPreview()
 
             Card("SEARCH FIELD") {
                 OptionRow(
@@ -204,41 +215,41 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
                     BarPlacement.entries,
                     draft.barPlacement,
                     { it.label },
-                ) { draft = draft.copy(barPlacement = it) }
+                ) { set(draft.copy(barPlacement = it)) }
                 Hint("Bottom dock keeps the field under your thumb while you scroll.")
             }
 
             Card("GALLERY") {
                 OptionRow("Card density", GridDensity.entries, draft.gridDensity, { it.label }) {
-                    draft = draft.copy(gridDensity = it)
+                    set(draft.copy(gridDensity = it))
                 }
                 OptionRow("Card style", CardStyle.entries, draft.cardStyle, { it.label }) {
-                    draft = draft.copy(cardStyle = it)
+                    set(draft.copy(cardStyle = it))
                 }
                 ToggleRow("Similar images under a photo", draft.related) {
-                    draft = draft.copy(related = it)
+                    set(draft.copy(related = it))
                 }
             }
 
             Card("MATERIALS") {
                 ToneRow("Leather", draft.leather, LeatherTone.entries, { it.label }, { it.base }) {
-                    draft = draft.copy(leather = it)
+                    set(draft.copy(leather = it))
                 }
                 ToneRow("Paper", draft.paper, PaperTone.entries, { it.label }, { it.base }) {
-                    draft = draft.copy(paper = it)
+                    set(draft.copy(paper = it))
                 }
                 ToneRow("Metal", draft.brass, BrassTone.entries, { it.label }, { it.base }) {
-                    draft = draft.copy(brass = it)
+                    set(draft.copy(brass = it))
                 }
                 ToggleRow("Real hide & paper textures", draft.textures) {
-                    draft = draft.copy(textures = it)
+                    set(draft.copy(textures = it))
                 }
                 Hint("Turning textures off saves memory on older phones.")
             }
 
             Card("MOTION & FEEL") {
-                ToggleRow("Animations", draft.motion) { draft = draft.copy(motion = it) }
-                ToggleRow("Haptics", draft.haptics) { draft = draft.copy(haptics = it) }
+                ToggleRow("Animations", draft.motion) { set(draft.copy(motion = it)) }
+                ToggleRow("Haptics", draft.haptics) { set(draft.copy(haptics = it)) }
             }
 
             Card("DOWNLOADS") {
@@ -247,23 +258,23 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
                     DownloadQuality.entries,
                     draft.downloadQuality,
                     { it.label },
-                ) { draft = draft.copy(downloadQuality = it) }
+                ) { set(draft.copy(downloadQuality = it)) }
                 Hint(draft.downloadQuality.hint + " Saved to Download/Searitch.")
             }
 
             Card("SEARCH DEFAULTS") {
                 ToggleRow("Safe search on by default", draft.defaultSafe) {
-                    draft = draft.copy(defaultSafe = it)
+                    set(draft.copy(defaultSafe = it))
                 }
                 ToggleRow("Block AI images by default", draft.defaultAntiAi) {
-                    draft = draft.copy(defaultAntiAi = it)
+                    set(draft.copy(defaultAntiAi = it))
                 }
                 Hint("Applies to new searches. Filter chips in the field still override per search.")
             }
 
             Card("CACHE") {
                 ToggleRow("Keep searched feeds", draft.cacheFeeds) {
-                    draft = draft.copy(cacheFeeds = it)
+                    set(draft.copy(cacheFeeds = it))
                 }
                 Row(
                     Modifier.fillMaxWidth(),
@@ -302,7 +313,7 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
             Text(
                 "SEARITCH · VERSION 1.1",
                 style = TextStyle(
-                    color = DefaultPalette.onLeatherSoft.copy(alpha = 0.8f),
+                    color = Ink.onLeatherSoft.copy(alpha = 0.8f),
                     fontFamily = cinzel(),
                     fontWeight = FontWeight.Bold,
                     fontSize = 10.sp,
@@ -315,6 +326,60 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
 }
 
 /* ───────────────────────────── building blocks ────────────────────────── */
+
+@Composable
+private fun MaterialPreview() {
+    val shape = RoundedCornerShape(10.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .shadow(6.dp, shape)
+            .leatherStrap()
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // a paper card on the hide, with a brass button seated in it
+        Column(
+            Modifier
+                .weight(1f)
+                .shadow(3.dp, RoundedCornerShape(6.dp))
+                .paperSurface(RoundedCornerShape(6.dp))
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "Aa",
+                color = Ink.strong,
+                fontFamily = cinzel(),
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp,
+            )
+            Text("STOCKED HIDE", color = Ink.faint, fontSize = 9.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.Bold)
+            Box(
+                Modifier
+                    .fillMaxWidth(0.72f)
+                    .height(22.dp)
+                    .clip(CircleShape)
+                    .background(brassBrush(), CircleShape)
+                    .border(1.dp, LocalPalette.current.brassDark, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "BRASS",
+                    color = LocalPalette.current.brassText,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.2.sp,
+                )
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("PREVIEW", color = Ink.onLeatherSoft, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+            GearButton(onClick = {}, open = false, modifier = Modifier)
+        }
+    }
+}
 
 @Composable
 private fun Card(title: String, content: @Composable () -> Unit) {
@@ -422,11 +487,28 @@ private fun <T> ToneRow(
     }
 }
 
-/** A leather-toggle rendered as two chips, so it reads as hardware, not a form. */
+/**
+ * On/off is a *switch*, not a pair of chips: chips mean "choose one of these"
+ * everywhere else in the app (filters, options), so booleans get their own
+ * brass-hardware control.
+ */
 @Composable
 private fun ToggleRow(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
+    val pal = LocalPalette.current
+    val haptics = rememberHaptics()
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClickLabel = label,
+            ) {
+                haptics.tap()
+                onChange(!on)
+            }
+            .padding(vertical = 3.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -437,9 +519,24 @@ private fun ToggleRow(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(end = 10.dp).weight(1f),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            SearitchChip("On", selected = on) { onChange(true) }
-            SearitchChip("Off", selected = !on) { onChange(false) }
+        // recessed track + sliding brass knob
+        Box(
+            Modifier
+                .size(width = 46.dp, height = 26.dp)
+                .clip(CircleShape)
+                .background(if (on) pal.brassDeep.copy(alpha = 0.35f) else Color(0x22000000), CircleShape)
+                .border(1.dp, if (on) pal.brassDark else Ink.faint.copy(alpha = 0.35f), CircleShape)
+                .padding(3.dp),
+        ) {
+            Box(
+                Modifier
+                    .align(if (on) Alignment.CenterEnd else Alignment.CenterStart)
+                    .size(20.dp)
+                    .shadow(2.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(if (on) brassBrush() else Brush.verticalGradient(listOf(Ink.faint, Ink.soft)))
+                    .border(1.dp, if (on) pal.brassDark else Ink.soft, CircleShape),
+            )
         }
     }
 }

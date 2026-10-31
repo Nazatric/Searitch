@@ -82,10 +82,10 @@ object FeedCache {
         val raw = PlatformStore.readFile(fileName(key)) ?: return null
         val feed = runCatching { json.decodeFromString(CachedFeed.serializer(), raw) }.getOrNull()
             ?: return null
-        // a clock that went backwards (fresh process on web) means "unknown age":
-        // keep it usable but never treat it as fresh
+        // a clock that went backwards (a page reload on web) means "unknown
+        // age" — serve it and treat it as fresh rather than refetching blindly
         val age = now() - feed.savedAt
-        if (age > USABLE_MS) return null
+        if (age > 0 && age > USABLE_MS) return null
         touch(key, feed)
         return feed
     }
@@ -117,7 +117,7 @@ object FeedCache {
 
     fun isFresh(feed: CachedFeed): Boolean {
         val age = now() - feed.savedAt
-        return age in 0..FRESH_MS
+        return age <= 0 || age <= FRESH_MS
     }
 
     private fun now(): Long = currentTimeMillis()

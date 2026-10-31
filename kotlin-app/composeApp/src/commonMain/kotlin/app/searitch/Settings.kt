@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -124,6 +125,13 @@ class Palette(
     val thread: Color,
     val onLeather: Color,
     val onLeatherSoft: Color,
+    // ink is derived from the paper, so every paper tone keeps its contrast
+    val inkStrong: Color,
+    val inkBody: Color,
+    val inkSoft: Color,
+    val inkFaint: Color,
+    val fieldBorder: Color,
+    val wellShadow: Color,
 )
 
 fun paletteFor(s: AppSettings): Palette = Palette(
@@ -140,9 +148,16 @@ fun paletteFor(s: AppSettings): Palette = Palette(
     brassDark = Color(s.brass.dark),
     brassDeep = Color(s.brass.deep),
     brassText = Color(s.brass.text),
-    thread = Color(0xFFE8CD96),
-    onLeather = Color(0xFFEADBBD),
-    onLeatherSoft = Color(0xFFB99A62),
+    thread = lerp(Color(s.brass.light), Color.White, 0.42f),
+    onLeather = lerp(Color(s.paper.base), Color.White, 0.62f),
+    onLeatherSoft = lerp(Color(s.paper.base), Color.White, 0.26f),
+    // ink = the paper darkened; never pure black, so it reads as printed ink
+    inkStrong = lerp(Color(s.paper.base), Color.Black, 0.80f),
+    inkBody = lerp(Color(s.paper.base), Color.Black, 0.72f),
+    inkSoft = lerp(Color(s.paper.base), Color.Black, 0.60f),
+    inkFaint = lerp(Color(s.paper.base), Color.Black, 0.47f),
+    fieldBorder = lerp(Color(s.paper.well), Color.Black, 0.55f).copy(alpha = 0.28f),
+    wellShadow = Color(s.leather.dark),
 )
 
 val DefaultPalette = paletteFor(AppSettings())

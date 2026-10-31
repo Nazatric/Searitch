@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.IntOffset
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
@@ -106,6 +107,11 @@ fun App(settings: SettingsState = remember { SettingsState.load() }) {
     PlatformBackHandler(enabled = backStack.size > 1) { pop() }
 
     SearitchTheme(settings) {
+        // system bars follow the hide, so the app never shows a grey scrim seam
+        PlatformSystemBars(
+            darkIcons = LocalPalette.current.leatherBase.luminance() > 0.42f,
+            scrim = settings.value.leather.dark,
+        )
         Surface(Modifier.fillMaxSize(), color = LocalPalette.current.leatherDark) {
             // Photos and the search field fly between screens (shared elements).
             SharedTransitionLayout {

@@ -297,6 +297,7 @@ fun SearchScreen(
                             onSubmit = { submit() },
                             activeCount = session.filters.activeCount,
                             onOpenFilters = { draft = session.filters; sheetOpen = true },
+                            shared = true,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -363,7 +364,7 @@ fun SearchScreen(
                                     Box(
                                         Modifier
                                             .clip(CircleShape)
-                                            .background(Color(0x33E8CD96))
+                                            .background(Ink.thread.copy(alpha = 0.18f))
                                             .padding(horizontal = 7.dp, vertical = 2.dp),
                                     ) {
                                         Text(
@@ -477,11 +478,12 @@ private fun SearchField(
     activeCount: Int,
     onOpenFilters: () -> Unit,
     modifier: Modifier = Modifier,
+    shared: Boolean = false,
 ) {
     val pal = LocalPalette.current
     Row(
         modifier = modifier
-            .sharedField()
+            .then(if (shared) Modifier.sharedField() else Modifier)
             .height(44.dp)
             .paperField()
             .padding(start = 12.dp, end = 4.dp),
@@ -528,7 +530,7 @@ private fun SearchField(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Ico.Filter, Color(0xFF4A3B28), Modifier.size(20.dp))
+            Icon(Ico.Filter, Ink.body, Modifier.size(20.dp))
             if (activeCount > 0) {
                 Box(
                     Modifier

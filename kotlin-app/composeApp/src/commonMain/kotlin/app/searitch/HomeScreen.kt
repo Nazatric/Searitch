@@ -90,7 +90,7 @@ fun HomeScreen(
         ) {
             Text(
                 "Searitch",
-                color = Color(0xFFEAD9B8),
+                color = Ink.onLeather,
                 fontFamily = cinzel(),
                 fontWeight = FontWeight.Bold,
                 fontSize = 40.sp,
@@ -98,7 +98,7 @@ fun HomeScreen(
             )
             Text(
                 "SEARCH ANYTHING",
-                color = Color(0xFFC4B49A),
+                color = Ink.onLeatherSoft,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 4.sp,
@@ -171,7 +171,7 @@ fun HomeScreen(
                         Text(
                             "RECENT",
                             style = TextStyle(
-                                color = Color(0xFFB99A62),
+                                color = Ink.onLeatherSoft,
                                 fontFamily = cinzel(),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp,
@@ -180,7 +180,7 @@ fun HomeScreen(
                         )
                         Text(
                             "clear",
-                            color = Color(0xFF8E7A58),
+                            color = Ink.onLeatherSoft.copy(alpha = 0.75f),
                             fontSize = 11.sp,
                             modifier = Modifier
                                 .clip(CircleShape)

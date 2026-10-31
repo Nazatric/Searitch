@@ -7,6 +7,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -15,6 +17,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
@@ -29,45 +32,57 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import app.searitch.resources.Res
 import app.searitch.resources.cinzel_bold
-import app.searitch.resources.leather
-import app.searitch.resources.paper
+import app.searitch.resources.leather_grain
+import app.searitch.resources.paper_grain
 import org.jetbrains.compose.resources.Font
 import org.jetbrains.compose.resources.imageResource
 
 /* ───────────── Searitch leather & paper palette (matches the web app) ──── */
 
+/*
+ * These three read from the *live* palette instead of holding fixed colours.
+ *
+ * They used to be plain constants, which meant ~50 call sites (straps, cards,
+ * chips, buttons, text) ignored the tone chosen in Settings — the app only
+ * repainted its background. As getters over a snapshot state they now restyle
+ * the entire UI the moment a tone changes, while every existing call site
+ * (`Leather.base`, `Ink.soft`, …) keeps compiling untouched.
+ */
 object Leather {
-    val dark = Color(0xFF24160D)
-    val base = Color(0xFF3A2418)
-    val light = Color(0xFF5A3620)
-    val highlight = Color(0xFF6E452A)
+    val dark: Color get() = LivePalette.value.leatherDark
+    val base: Color get() = LivePalette.value.leatherBase
+    val light: Color get() = LivePalette.value.leatherLight
+    val highlight: Color get() = LivePalette.value.leatherHighlight
 }
 
 object Paper {
-    val base = Color(0xFFF1E8D4)
-    val deep = Color(0xFFE4D8BC)
-    val inset = Color(0xFFE6DCC3)
-    val imageWell = Color(0xFFCDBF9F)
+    val base: Color get() = LivePalette.value.paperBase
+    val deep: Color get() = LivePalette.value.paperDeep
+    val inset: Color get() = LivePalette.value.paperInset
+    val imageWell: Color get() = LivePalette.value.paperWell
 }
 
 object Ink {
-    val strong = Color(0xFF2E2419)
-    val body = Color(0xFF443720)
-    val soft = Color(0xFF5F5138)
-    val faint = Color(0xFF7D6845)
-    val onLeather = Color(0xFFEADBBD)
-    val onLeatherSoft = Color(0xFFB99A62)
-    val thread = Color(0xFFE8CD96)
-    val danger = Color(0xFF73351F)
+    val strong: Color get() = LivePalette.value.inkStrong
+    val body: Color get() = LivePalette.value.inkBody
+    val soft: Color get() = LivePalette.value.inkSoft
+    val faint: Color get() = LivePalette.value.inkFaint
+    val onLeather: Color get() = LivePalette.value.onLeather
+    val onLeatherSoft: Color get() = LivePalette.value.onLeatherSoft
+    val thread: Color get() = LivePalette.value.thread
+    val danger: Color get() = Color(0xFF73351F)
 }
 
 object Brass {
-    val light = Color(0xFFE2C279)
-    val base = Color(0xFFC9A24B)
-    val dark = Color(0xFF8B6B27)
-    val deep = Color(0xFFBF9A45)
-    val text = Color(0xFF2F2209)
+    val light: Color get() = LivePalette.value.brassLight
+    val base: Color get() = LivePalette.value.brassBase
+    val dark: Color get() = LivePalette.value.brassDark
+    val deep: Color get() = LivePalette.value.brassDeep
+    val text: Color get() = LivePalette.value.brassText
 }
+
+/** The palette currently painted. Written once per theme change, read everywhere. */
+val LivePalette = mutableStateOf(DefaultPalette)
 
 /** Brass gradient in the tone the user picked in Settings. */
 @Composable
@@ -95,10 +110,14 @@ fun foilBrush(): Brush {
 fun cinzel(): FontFamily = FontFamily(Font(Res.font.cinzel_bold, FontWeight.Bold))
 
 /* ───────────────────────── real tiled textures ───────────────────────────
-   The same seamless, high-res leather & paper bitmaps as the web app
-   (composeResources/drawable/leather.png = 864px, paper.png = 576px), tiled
-   at 288dp — exactly 3 texture pixels per dp, i.e. 1:1 on a 3x phone and
-   downsampled (crisp) on 2x. Loaded once in SearitchTheme.                  */
+   Seamless grain maps (composeResources/drawable/leather_grain.png = 864px,
+   paper_grain.png = 576px) tiled at 288dp — exactly 3 texture pixels per dp,
+   i.e. 1:1 on a 3x phone and downsampled (crisp) on 2x. Loaded once in
+   SearitchTheme.
+
+   The maps are near-white *detail* only: the colour comes from the tone chosen
+   in Settings, multiplied in at draw time. That is what makes every leather /
+   paper tone look like dyed material without shipping nine bitmaps.          */
 
 class Textures(val leather: ImageBitmap, val paper: ImageBitmap)
 
@@ -106,9 +125,12 @@ val LocalTextures = staticCompositionLocalOf<Textures?> { null }
 
 private val TILE = 288.dp
 
-/** Tiles [image] across the bounds. Skips the 1×1 placeholder some targets
- *  (Wasm) return while a resource is still loading, so nothing flashes. */
-fun Modifier.tiledTexture(image: ImageBitmap?, tile: Dp): Modifier =
+/**
+ * Tiles [image] across the bounds, tinted to [tint] by multiplication.
+ * Skips the 1×1 placeholder some targets (Wasm) return while a resource is
+ * still loading, so nothing flashes.
+ */
+fun Modifier.tiledTexture(image: ImageBitmap?, tile: Dp, alpha: Float = 1f): Modifier =
     if (image == null) this
     else this.clipToBounds().drawBehind {
         if (image.width <= 1 || image.height <= 1) return@drawBehind
@@ -122,6 +144,10 @@ fun Modifier.tiledTexture(image: ImageBitmap?, tile: Dp): Modifier =
                     image = image,
                     dstOffset = IntOffset(x, y),
                     dstSize = dst,
+                    // Overlay: mid-grey leaves the tone alone, darker shadows it,
+                    // lighter catches the light — grain that follows any tone.
+                    blendMode = BlendMode.Overlay,
+                    alpha = alpha,
                     filterQuality = FilterQuality.High,
                 )
                 x += t
@@ -207,8 +233,8 @@ fun Modifier.leatherStrap(): Modifier =
 
 @Composable
 fun SearitchTheme(settings: SettingsState, content: @Composable () -> Unit) {
-    val leather = imageResource(Res.drawable.leather)
-    val paper = imageResource(Res.drawable.paper)
+    val leather = imageResource(Res.drawable.leather_grain)
+    val paper = imageResource(Res.drawable.paper_grain)
     val textures = remember(leather, paper) { Textures(leather, paper) }
     val palette = settings.palette
     val scheme = remember(palette) {
@@ -223,6 +249,8 @@ fun SearitchTheme(settings: SettingsState, content: @Composable () -> Unit) {
             onSecondary = palette.onLeather,
         )
     }
+    // keep the static accessors (Leather/Ink/Brass) pointing at this palette
+    SideEffect { if (LivePalette.value !== palette) LivePalette.value = palette }
     CompositionLocalProvider(
         LocalSettings provides settings,
         LocalPalette provides palette,
