@@ -83,10 +83,18 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 32.dp)
+                .padding(horizontal = 24.dp)
+                .padding(
+                    top = if (settings.homeBar == HomeBarPosition.TOP) 76.dp else 32.dp,
+                    bottom = 32.dp,
+                )
                 .graphicsLayer { alpha = appear; translationY = (1f - appear) * 40f },
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+            verticalArrangement = when (settings.homeBar) {
+                HomeBarPosition.TOP -> Arrangement.Top
+                HomeBarPosition.MIDDLE -> Arrangement.Center
+                HomeBarPosition.BOTTOM -> Arrangement.Bottom
+            },
         ) {
             Text(
                 "Searitch",

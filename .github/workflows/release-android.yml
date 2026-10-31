@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v0.6"
+        default: "v0.7"
   push:
     branches:
       - "arena/1b4ed963-searitch"
@@ -168,9 +168,9 @@ jobs:
           for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk" | sort); do
             base=$(basename "$apk")
             case "$base" in
-              *arm64*)   name="Searitch-v0.6-arm64-v8a.apk" ;;
-              *armeabi*) name="Searitch-v0.6-armeabi-v7a.apk" ;;
-              *)         name="Searitch-v0.6-$base" ;;
+              *arm64*)   name="Searitch-v0.7-arm64-v8a.apk" ;;
+              *armeabi*) name="Searitch-v0.7-armeabi-v7a.apk" ;;
+              *)         name="Searitch-v0.7-$base" ;;
             esac
             echo "--- $base -> $name"
 
@@ -221,37 +221,36 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || 'v0.6' }}
+          TAG: ${{ github.event.inputs.tag || 'v0.7' }}
         run: |
           set -euo pipefail
           cat > notes.md <<'EOF'
-          ### v0.6 — sharp photos, honest controls, and a real icon
+          ### v0.7 — the hide is back, and the landing bar moves
 
-          `versionCode 6` · `versionName 1.3.1`
+          `versionCode 7` · `versionName 1.4.0`
 
-          **Photos are sharp immediately**
+          **Settings sits on the hide again**
 
-          The detail view used to stretch the grid thumbnail across the screen and wait seconds for the original. For Wallhaven that thumbnail is a 300x200 file, so the first thing you saw was a blurry mess.
+          The sheet was painted with a flat fill while the cards on it had texture, which is why it looked like a different app. It uses the same leather surface as the home screen now — same hide, same sheen, same tiling — with the status-bar inset respected so the title never collides with the clock.
 
-          - Every source now carries a screen-resolution preview: Wallhaven's ~1920px `large`, Wikimedia's 1280px rendition, and so on down the list.
-          - The hero paints that preview right away — at phone size it is already sharp — and only crossfades to the original when the preview is genuinely smaller than the screen. 4K wallpapers still upgrade; ordinary photos simply arrive sharp.
-          - While an upgrade is in flight a small brass `FINISHING` tag sits in the corner, so a wait never looks like a broken image.
+          **Switches are paper and brass, not black**
 
-          **Controls that belong to the materials**
+          The toggle had become a dark leather channel and read as a black pill dropped into the card. It is a debossed paper trough with a brass knob again: the same field as the search bar, the same metal as every other control.
 
-          - Toggles were a black track with a black knob, which read as a cheap 3D widget dropped into the paper card. They are now a stitched leather channel with a travelling knob: brass when on, paper when off.
-          - The cog was near-black, so it looked like a sticker on the medallion. It is engraved brass now — darker metal in a lighter disc, with the light catch and cut edge doing the work instead of raw black.
+          **The landing screen search bar can move**
 
-          **App icon**
+          New in Settings → Home screen: a brass slider with three detents — Top, Middle, Bottom. It moves the wordmark and field together, so the page stays balanced wherever you put it.
 
-          The brass magnifier on saddle leather, generated for this build and cut for every density: legacy square and round icons plus a full-bleed adaptive icon for Android 8+. The magnifier sits inside the 66% safe circle, so no launcher mask ever clips it.
+          **Icon**
+
+          The magnifier image you sent, used as-is. No regeneration, no recolouring — cut to every density for the legacy square and round icons, plus a full-bleed adaptive icon for Android 8+.
 
           ### Assets
 
           | File | For |
           | --- | --- |
-          | `Searitch-v0.6-arm64-v8a.apk` | almost every phone since 2017 |
-          | `Searitch-v0.6-armeabi-v7a.apk` | older 32-bit devices |
+          | `Searitch-v0.7-arm64-v8a.apk` | almost every phone since 2017 |
+          | `Searitch-v0.7-armeabi-v7a.apk` | older 32-bit devices |
           | `searitch-release.keystore` | signing key — password `searitch2026`, alias `searitch` |
           | `SHA256SUMS.txt` | checksums |
           EOF
@@ -261,7 +260,7 @@ jobs:
             --title "Searitch $TAG" \
             --notes-file notes.md \
             --target "$GITHUB_SHA" \
-            out/Searitch-v0.6-arm64-v8a.apk \
-            out/Searitch-v0.6-armeabi-v7a.apk \
+            out/Searitch-v0.7-arm64-v8a.apk \
+            out/Searitch-v0.7-armeabi-v7a.apk \
             out/searitch-release.keystore \
             out/SHA256SUMS.txt

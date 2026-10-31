@@ -13,6 +13,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,10 +23,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -70,6 +73,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -280,7 +284,11 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
     ModalBottomSheet(
         onDismissRequest = { onDismiss() },
         sheetState = sheetState,
-        containerColor = LocalPalette.current.leatherBase,
+        // the container stays transparent so the *textured* hide below shows;
+        // a flat fill here was what made the sheet look like a different app
+        containerColor = Color.Transparent,
+        scrimColor = Color(0x99000000),
+        tonalElevation = 0.dp,
         dragHandle = {
             Box(
                 Modifier
@@ -293,9 +301,12 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
     ) {
         Column(
             Modifier
+                .fillMaxWidth()
+                .leatherSurface(tall = true)
+                .statusBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
-                .padding(bottom = 24.dp + navPad),
+                .padding(top = 4.dp, bottom = 24.dp + navPad),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             /* ── heading ── */
@@ -331,6 +342,14 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
             // A live sample: the chosen hide, stock and metal rendered exactly as
             // the app paints them, so a tone is judged on the real thing.
             MaterialPreview()
+
+            Card("HOME SCREEN") {
+                PositionSlider(
+                    value = draft.homeBar,
+                    onChange = { set(draft.copy(homeBar = it)) },
+                )
+                Hint("Where the search bar sits on the landing screen.")
+            }
 
             Card("SEARCH FIELD") {
                 OptionRow(
@@ -461,6 +480,83 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
 }
 
 /* ───────────────────────────── building blocks ────────────────────────── */
+
+/**
+ * A brass trackslider for the landing-screen search bar.
+ *
+ * Discrete: three detents, each labelled, so the thumb *is* the answer rather
+ * than an abstract number. The trough is the same debossed paper as a field and
+ * the thumb is the same metal as every other control.
+ */
+@Composable
+private fun PositionSlider(value: HomeBarPosition, onChange: (HomeBarPosition) -> Unit) {
+    val pal = LocalPalette.current
+    val options = HomeBarPosition.entries
+    val index = options.indexOf(value).coerceAtLeast(0)
+    val fraction by animateFloatAsState(
+        targetValue = index / (options.size - 1).toFloat(),
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow),
+        label = "homeBarSlider",
+    )
+
+    Column(Modifier.fillMaxWidth()) {
+        BoxWithConstraints(
+            Modifier
+                .fillMaxWidth()
+                .height(34.dp)
+                .paperField(CircleShape)
+                .pointerInput(options.size) {
+                    detectDragGestures(
+                        onDragStart = { off ->
+                            val slot = (off.x / size.width * (options.size - 1)).roundToInt()
+                            onChange(options[slot.coerceIn(options.indices)])
+                        },
+                        onDrag = { change, _ ->
+                            val slot = (change.position.x / size.width * (options.size - 1))
+                                .roundToInt()
+                            onChange(options[slot.coerceIn(options.indices)])
+                        },
+                    )
+                }
+                .padding(horizontal = 7.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            // thumb
+            val track = maxWidth - 14.dp
+            val thumb = 22.dp
+            val travel = track - thumb
+            Box(
+                Modifier
+                    .offset { IntOffset((travel.value * fraction * density).toInt(), 0) }
+                    .size(thumb)
+                    .shadow(3.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(brassBrush(), CircleShape)
+                    .border(1.dp, pal.brassDark, CircleShape),
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            options.forEach { opt ->
+                Text(
+                    opt.label.uppercase(),
+                    color = if (opt == value) Ink.body else Ink.faint,
+                    fontSize = 9.5.sp,
+                    fontWeight = if (opt == value) FontWeight.Black else FontWeight.SemiBold,
+                    letterSpacing = 1.4.sp,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { onChange(opt) }
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+            }
+        }
+    }
+}
 
 /** A chip that fills its slot, so a long label can never be clipped mid-word. */
 @Composable
@@ -677,6 +773,80 @@ private fun <T> ToneRow(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * On/off is a *switch*, not a pair of chips: chips mean "choose one of these"
+ * everywhere else in the app (filters, options), so booleans get their own
+ * brass-hardware control.
+ */
+@Composable
+private fun ToggleRow(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
+    val pal = LocalPalette.current
+    val haptics = rememberHaptics()
+    val motion = LocalSettings.current.value.motion
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClickLabel = label,
+            ) {
+                haptics.tap()
+                onChange(!on)
+            }
+            .padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            color = Ink.body,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(end = 10.dp).weight(1f),
+        )
+        /*
+         * A paper trough with a brass knob — the same debossed field as the search
+         * bar, so the switch belongs to the page instead of sitting on top of it.
+         * (A dark leather channel here read as a black pill: exactly the "cheap
+         * 3D widget" problem.)
+         */
+        val travel by animateFloatAsState(
+            targetValue = if (on) 1f else 0f,
+            animationSpec = if (motion) {
+                spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMediumLow)
+            } else {
+                tween(0)
+            },
+            label = "knob",
+        )
+        Box(
+            Modifier
+                .size(width = 46.dp, height = 26.dp)
+                .paperField(CircleShape)
+                .padding(3.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Box(
+                Modifier
+                    .offset { IntOffset((20f * travel * density).toInt(), 0) }
+                    .size(20.dp)
+                    .shadow(2.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(
+                        if (on) brassBrush()
+                        else Brush.verticalGradient(
+                            listOf(Color.White, pal.paperDeep, pal.paperWell),
+                        ),
+                        CircleShape,
+                    )
+                    .border(1.dp, if (on) pal.brassDark else pal.paperWell, CircleShape),
+            )
         }
     }
 }

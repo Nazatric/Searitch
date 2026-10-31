@@ -20,6 +20,12 @@ enum class BarPlacement(val label: String) {
     BOTTOM("Bottom dock"),
 }
 
+/** Where the search field sits on the landing screen. */
+@Serializable
+enum class HomeBarPosition(val label: String) {
+    TOP("Top"), MIDDLE("Middle"), BOTTOM("Bottom"),
+}
+
 @Serializable
 enum class GridDensity(val label: String, val minCardDp: Int, val gapDp: Int) {
     COMPACT("Compact", 108, 6),
@@ -86,6 +92,7 @@ enum class DownloadQuality(val label: String, val hint: String) {
 @Immutable
 @Serializable
 data class AppSettings(
+    val homeBar: HomeBarPosition = HomeBarPosition.MIDDLE,
     val barPlacement: BarPlacement = BarPlacement.TOP,
     val gridDensity: GridDensity = GridDensity.COMFORTABLE,
     val cardStyle: CardStyle = CardStyle.PRINT,
