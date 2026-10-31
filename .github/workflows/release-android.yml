@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 env:
   ZIP_NAME: searitch-universal-image-search-app.zip
@@ -84,9 +85,19 @@ jobs:
           ./gradlew :composeApp:assembleRelease \
             --init-script "${{ github.workspace }}/abi-splits.gradle" \
             --no-configuration-cache \
-            --stacktrace
+            --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
           echo "=== outputs ==="
           find composeApp/build/outputs/apk -type f -name "*.apk" -exec ls -lh {} \;
+
+      - name: Publish diagnostics on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LOG="$GITHUB_WORKSPACE/build.log"
+          [ -f "$LOG" ] || { echo "no build.log captured" > "$GITHUB_WORKSPACE/fail.txt"; LOG="$GITHUB_WORKSPACE/fail.txt"; }
+          { echo "Run: $GITHUB_RUN_ID ($GITHUB_SHA)"; echo '```'; tail -n 250 "$LOG"; echo '```'; } > diag.md
+          gh issue create --title "CI diagnostics $GITHUB_RUN_ID" --body-file diag.md || true
 
       - name: Sign APKs
         run: |
