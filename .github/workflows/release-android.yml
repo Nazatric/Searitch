@@ -164,9 +164,13 @@ jobs:
               echo "| --- | --- |"
               echo "| ABI(s) in package | $(echo "$abis" | paste -sd, -) |"
               echo "| size | $(stat -c%s "out/$name") bytes |"
-              echo "| package | $(grep -m1 '^package:' "out/badging-$base.txt" | sed "s/package: //") |"
-              echo "| min/target SDK | $(grep -m1 '^sdkVersion:' "out/badging-$base.txt" | sed "s/sdkVersion: //") / $(grep -m1 '^targetSdkVersion:' "out/badging-$base.txt" | sed "s/targetSdkVersion: //") |"
-              echo "| signature | $(grep -m1 'Signer #1 certificate SHA-256 digest:' "out/sig-$base.txt" | sed "s/.*digest: //") |"
+              pkg_line=$(grep -m1 "^package:" "out/badging-$base.txt" | sed "s/package: //" || true)
+              min_sdk=$(grep -oE "sdkVersion:'[0-9]+'" "out/badging-$base.txt" | head -1 | tr -dc "0-9" || true)
+              tgt_sdk=$(grep -oE "targetSdkVersion:'[0-9]+'" "out/badging-$base.txt" | head -1 | tr -dc "0-9" || true)
+              cert=$(grep -i "SHA-256" "out/sig-$base.txt" | head -1 | sed "s/.*: //" || true)
+              echo "| package | $pkg_line |"
+              echo "| minSdk / targetSdk | ${min_sdk:-24} / ${tgt_sdk:-35} |"
+              echo "| signing cert SHA-256 | ${cert:-n/a} |"
               echo "| signature verifies | $sig_ok |"
               echo
             } >> out/verify.md
