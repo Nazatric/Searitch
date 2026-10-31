@@ -13,6 +13,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image as ComposeImage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +47,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.TextStyle
@@ -134,20 +137,43 @@ fun DetailScreen(
     val scope = rememberCoroutineScope()
     val downloader = rememberImageDownloader()
     val haptics = rememberHaptics()
+    val sharer = rememberSharer()
+    val wallpaperSetter = rememberWallpaperSetter()
+    // The photo as the search returned it, then as the source describes it once
+    // its own record has been read. Wallhaven's search payload carries no title
+    // and no tags, so this is where "Untitled Photo" and the word "wallpaper" as
+    // a similar-image subject both go away.
+    var shown by remember(img.id) { mutableStateOf(img) }
     var related by remember(img.id) { mutableStateOf(RelatedCache.get(img.id)) }
+    var byLook by remember(img.id) { mutableStateOf(false) }
     var saveState by remember(img.id) { mutableStateOf(SaveState.Idle) }
     var saveMessage by remember(img.id) { mutableStateOf<String?>(null) }
+    var wallState by remember(img.id) { mutableStateOf(SaveState.Idle) }
+    var wallMessage by remember(img.id) { mutableStateOf<String?>(null) }
+    // Pinch-to-scale, and the readout that says how far in you are. ImageSearchMan
+    // shows the same thing; without it a zoomed picture gives no clue where you are.
+    var zoom by remember(img.id) { mutableFloatStateOf(1f) }
     val uriHandler = LocalUriHandler.current
     val navPad = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val platformContext = LocalPlatformContext.current
 
     LaunchedEffect(img.id) {
+        val fuller = runCatching { Api.hydrate(img) }.getOrDefault(img)
+        if (fuller != img) shown = fuller
+    }
+
+    LaunchedEffect(img.id, shown) {
         if (related != null || !settings.related) return@LaunchedEffect
-        val fresh = runCatching { Api.related(img) }
+        val fresh = runCatching { Api.related(shown) }
             .getOrDefault(emptyList())
             .filter { it.id != img.id }
-            .take(18)
-        RelatedCache.put(img.id, fresh)
-        related = fresh
+        // Subject already ordered these; the pixels decide the last step.
+        val refined = runCatching { Visual.rank(shown, fresh) }
+            .getOrNull()
+            ?: Visual.Refined(fresh.take(18), false)
+        RelatedCache.put(img.id, refined.images)
+        byLook = refined.byLook
+        related = refined.images
     }
 
     val rendition = remember(img.id) { heroRendition(img) }
@@ -162,7 +188,6 @@ fun DetailScreen(
      * appears the moment the decode lands.
      */
     var retryTick by remember(img.id) { mutableIntStateOf(0) }
-    val platformContext = LocalPlatformContext.current
     val sharpModel: Any? = remember(img.id, retryTick) {
         val url = rendition.sharp
         when {
@@ -275,7 +300,7 @@ fun DetailScreen(
                 ) {
                     // Cards show only the photo, so the title is announced here.
                     Text(
-                        displayTitle(img.title) ?: "Untitled photo",
+                        displayTitle(shown.title) ?: "${shown.sourceSite} plate",
                         color = Ink.body,
                         fontFamily = cinzel(),
                         fontWeight = FontWeight.Bold,
@@ -292,21 +317,56 @@ fun DetailScreen(
                             .clip(RoundedCornerShape(3.dp))
                             .background(Paper.imageWell),
                     ) {
-                        ComposeImage(
-                            painter = firstPainter,
-                            contentDescription = img.title,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                        if (sharpPainter != null) {
-                            ComposeImage(
-                                painter = sharpPainter,
-                                contentDescription = null,
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .pointerInput(img.id) {
+                                    detectTransformGestures { _, _, pinch, _ ->
+                                        zoom = (zoom * pinch).coerceIn(1f, 6f)
+                                    }
+                                },
+                        ) {
+                            Box(
+                                Modifier
                                     .fillMaxSize()
-                                    .graphicsLayer { alpha = sharpAlpha },
-                            )
+                                    .graphicsLayer { scaleX = zoom; scaleY = zoom },
+                            ) {
+                                ComposeImage(
+                                    painter = firstPainter,
+                                    contentDescription = img.title,
+                                    contentScale = ContentScale.Fit,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                if (sharpPainter != null) {
+                                    ComposeImage(
+                                        painter = sharpPainter,
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .graphicsLayer { alpha = sharpAlpha },
+                                    )
+                                }
+                            }
+                        }
+                        if (zoom > 1.005f) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(8.dp)
+                                    .clip(CircleShape)
+                                    .clickable { zoom = 1f }
+                                    .background(Color(0xCC1C1008))
+                                    .padding(horizontal = 9.dp, vertical = 5.dp),
+                            ) {
+                                Text(
+                                    "${(zoom * 10).toInt() / 10f}×  TAP TO FIT",
+                                    color = Ink.thread,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 1.2.sp,
+                                )
+                            }
                         }
                         /*
                          * The tag reports what is actually happening. While the
@@ -413,6 +473,47 @@ fun DetailScreen(
                         }
                     }
 
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        PaperAction("Share", Modifier.weight(1f)) {
+                            sharer.share(displayTitle(shown.title) ?: shown.sourceSite, shown.sourceUrl)
+                        }
+                        PaperAction(
+                            when (wallState) {
+                                SaveState.Saving -> "Setting…"
+                                SaveState.Saved -> "On your wall ✓"
+                                else -> "Wallpaper"
+                            },
+                            Modifier.weight(1f),
+                        ) {
+                            if (wallState == SaveState.Saving) return@PaperAction
+                            val url = downloadUrlFor(shown, DownloadQuality.ORIGINAL)
+                            wallState = SaveState.Saving
+                            wallMessage = null
+                            scope.launch {
+                                val outcome = runCatching { wallpaperSetter.set(url) }
+                                    .getOrElse { DownloadOutcome(false, it.message ?: "Couldn't set it.") }
+                                wallState = if (outcome.ok) SaveState.Saved else SaveState.Failed
+                                wallMessage = outcome.message
+                                if (outcome.ok) {
+                                    haptics.tap()
+                                    kotlinx.coroutines.delay(2600)
+                                    if (wallState == SaveState.Saved) wallState = SaveState.Idle
+                                }
+                            }
+                        }
+                    }
+                    wallMessage?.let { msg ->
+                        Text(
+                            msg,
+                            color = if (wallState == SaveState.Failed) Ink.danger else Ink.soft,
+                            fontSize = 11.5.sp,
+                            modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
+                        )
+                    }
+
                     if (saveState == SaveState.Saving) {
                         LinearSaveProgress()
                     }
@@ -428,10 +529,10 @@ fun DetailScreen(
             }
 
             if (settings.related) {
-                // Say what it searched for: the subject words it took from this
-                // image's tags, or from its title when it has none. A plain call,
-                // not `remember` — the grid's content lambda isn't composable.
-                val keywords = Api.relatedKeywords(img)
+                // Say what it searched for: the subject it took from this image's
+                // own tags, or from its title when it has none. A plain call, not
+                // `remember` — the grid's content lambda isn't composable.
+                val keywords = Api.subjectLabel(shown)
                 item(span = StaggeredGridItemSpan.FullLine, key = "similar") {
                     Column(Modifier.padding(top = 14.dp, bottom = 2.dp, start = 2.dp)) {
                         Text(
@@ -446,7 +547,8 @@ fun DetailScreen(
                         )
                         if (keywords.isNotEmpty()) {
                             Text(
-                                "matching “$keywords”",
+                                if (byLook) "matching “$keywords” · nearest look first"
+                                else "matching “$keywords”",
                                 color = Ink.onLeatherSoft,
                                 fontSize = 11.sp,
                                 modifier = Modifier.padding(top = 3.dp),
@@ -479,6 +581,37 @@ fun DetailScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * The quiet sibling of [BrassButton]: same paper field as SOURCE, for actions
+ * that are worth having but shouldn't compete with Download.
+ */
+@Composable
+private fun PaperAction(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .paperField()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 12.dp, vertical = 13.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text.uppercase(),
+            color = Ink.soft,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 1.4.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

@@ -6,11 +6,12 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v0.11"
+        default: "v0.12"
   push:
     branches:
       # the working branch Arena is on; keep the last one too so a rebase or a
       # branch switch doesn't silently stop the build
+      - "arena/942b364c-searitch"
       - "arena/5a0be822-searitch"
       - "arena/8747d8f4-searitch"
     paths:
@@ -178,9 +179,9 @@ jobs:
           for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk" | sort); do
             base=$(basename "$apk")
             case "$base" in
-              *arm64*)   name="Searitch-v0.11-arm64-v8a.apk" ;;
-              *armeabi*) name="Searitch-v0.11-armeabi-v7a.apk" ;;
-              *)         name="Searitch-v0.11-$base" ;;
+              *arm64*)   name="Searitch-v0.12-arm64-v8a.apk" ;;
+              *armeabi*) name="Searitch-v0.12-armeabi-v7a.apk" ;;
+              *)         name="Searitch-v0.12-$base" ;;
             esac
             echo "--- $base -> $name"
 
@@ -232,44 +233,57 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || 'v0.11' }}
+          TAG: ${{ github.event.inputs.tag || 'v0.12' }}
         run: |
           set -euo pipefail
           cat > notes.md <<'EOF'
-          ### v0.11 — the hero actually finishes
+          ### v0.12 — similar means similar, and nothing is untitled
 
-          `versionCode 11` · `versionName 1.7.1`
+          `versionCode 12` · `versionName 1.8.0`
 
-          **A one-line bug, causing the worst symptom yet**
+          **The similar strip compares pictures, not words**
 
-          The detail view asked the image library "have you finished?" exactly once,
-          at the moment the screen opened, and then never listened again. The
-          library's answer arrives as a stream, not a value, so the answer was
-          always "not yet" — forever. The badge sat on `FINISHING` and the sharp
-          version stayed invisible even after the full-size file had already been
-          downloaded and cached, which is why Download handed you the original
-          file instantly while the app was still "finishing". It now subscribes to
-          that stream, so the badge clears and the sharp image fades in the moment
-          the decode lands.
+          It used to re-run the search text, so a Wallhaven wall that arrived
+          without tags was "similar" to the word `wallpaper` — which is how a
+          strip of mountains, paper rolls and a group photo ended up under an
+          anime wall. The picture is now compared to the candidates with a
+          64-bit difference hash: 64 samples per image, ordered by how many bits
+          differ, and anything more than half the bits apart is dropped rather
+          than shown. Candidates that don't share the photo's own subject are
+          filtered out before the hashing starts.
 
-          **A failure now says so**
+          Every reverse-image engine was tried first, and none of them can serve
+          a phone app: SauceNAO refuses anonymous API use, trace.moe refuses to
+          fetch a URL, Bing's reverse GET redirects to its trending page, and
+          Yandex builds its similar block in JavaScript only. Rather than ship a
+          button that quietly returns nothing, the comparison moved into the app.
 
-          If the full-size file genuinely can't be fetched, the badge becomes
-          `TAP TO RETRY` instead of pretending to work. The retry issues a fresh
-          request rather than replaying the cached failure.
+          **No more Untitled Photo**
 
-          **No more flashing tag**
+          Wallhaven's search endpoint returns no title *and* no tags. Walls were
+          being labelled `Wallpaper 1964×3500`, which the caption threw away as
+          noise. Opening a wall now reads its own record, so the title is the
+          site's real tags — *Fox Girl · Flute · Blue Eyes* — and the same tags
+          are what the similar search uses. A photo with no title anywhere is
+          described by the collection it came from.
 
-          The badge waits 400 ms before appearing, so an image that is already
-          cached — most of them, coming back from a search — opens straight to
-          sharp with no tag at all.
+          **Share, Set as wallpaper, pinch to scale**
+
+          Sharing sends the page that credits the photographer. The wallpaper
+          button sets the picture from the panel with no download and no gallery
+          hop. Pinching scales the picture and the little readout says how far in
+          you are; tap it to fit again.
+
+          The web build keeps subject ranking but not look ranking — browsers
+          refuse to read pixels back out of several of these sources — and says
+          so instead of pretending.
 
           ### Assets
 
           | File | For |
           | --- | --- |
-          | `Searitch-v0.11-arm64-v8a.apk` | almost every phone since 2017 |
-          | `Searitch-v0.11-armeabi-v7a.apk` | older 32-bit devices |
+          | `Searitch-v0.12-arm64-v8a.apk` | almost every phone since 2017 |
+          | `Searitch-v0.12-armeabi-v7a.apk` | older 32-bit devices |
           | `searitch-release.keystore` | signing key — password `searitch2026`, alias `searitch` |
           | `SHA256SUMS.txt` | checksums |
           EOF
@@ -279,7 +293,7 @@ jobs:
             --title "Searitch $TAG" \
             --notes-file notes.md \
             --target "$GITHUB_SHA" \
-            out/Searitch-v0.11-arm64-v8a.apk \
-            out/Searitch-v0.11-armeabi-v7a.apk \
+            out/Searitch-v0.12-arm64-v8a.apk \
+            out/Searitch-v0.12-armeabi-v7a.apk \
             out/searitch-release.keystore \
             out/SHA256SUMS.txt
