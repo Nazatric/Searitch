@@ -9,8 +9,10 @@ on:
         default: "v0.9"
   push:
     branches:
+      # the working branch Arena is on; keep the last one too so a rebase or a
+      # branch switch doesn't silently stop the build
+      - "arena/b658bb31-searitch"
       - "arena/89730b10-searitch"
-      - "arena/1b4ed963-searitch"
     paths:
       - "kotlin-app/**"
       - ".github/workflows/release-android.yml"
