@@ -42,7 +42,21 @@ jobs:
         run: |
           set -euo pipefail
           [ -f gradle/wrapper/gradle-wrapper.jar ] || gradle wrapper --gradle-version 8.11.1 --no-configuration-cache
-          ./gradlew :composeApp:compileKotlinWasmJs --no-configuration-cache --stacktrace 2>&1 | tail -60
+          ./gradlew :composeApp:compileKotlinWasmJs --no-configuration-cache --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/web.log" | tail -40
+
+      - name: Publish web diagnostics on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LOG="$GITHUB_WORKSPACE/web.log"
+          {
+            echo "Web target failed: $GITHUB_RUN_ID ($GITHUB_SHA)"
+            echo '```'
+            [ -f "$LOG" ] && grep -E "^e: |^w: |Unresolved|Type mismatch|error:" "$LOG" | head -120 || echo "no log"
+            echo '```'
+          } > web-diag.md
+          gh issue create --title "Web build diagnostics $GITHUB_RUN_ID" --body-file web-diag.md || true
 
   build:
     name: Build arm64-v8a + armeabi-v7a APKs
@@ -124,7 +138,19 @@ jobs:
         run: |
           LOG="$GITHUB_WORKSPACE/build.log"
           [ -f "$LOG" ] || { echo "no build.log captured" > "$GITHUB_WORKSPACE/fail.txt"; LOG="$GITHUB_WORKSPACE/fail.txt"; }
-          { echo "Run: $GITHUB_RUN_ID ($GITHUB_SHA)"; echo '```'; tail -n 250 "$LOG"; echo '```'; } > diag.md
+          {
+            echo "Run: $GITHUB_RUN_ID ($GITHUB_SHA)"
+            echo
+            echo "### Kotlin diagnostics"
+            echo '```'
+            grep -E "^e: |^w: |Unresolved|Type mismatch|error:" "$LOG" | head -120 || true
+            echo '```'
+            echo
+            echo "### Build tail"
+            echo '```'
+            tail -40 "$LOG"
+            echo '```'
+          } > diag.md
           gh issue create --title "CI diagnostics $GITHUB_RUN_ID" --body-file diag.md || true
 
       - name: Sign APKs and verify them
