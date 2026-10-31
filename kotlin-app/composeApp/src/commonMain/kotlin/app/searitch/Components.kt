@@ -197,8 +197,21 @@ fun Tag(text: String, modifier: Modifier = Modifier) {
 
 /* ───────────────────────────── photo print ──────────────────────────────── */
 
+/**
+ * A card's frame starts at the ratio the source reported.
+ *
+ * The clamp is deliberately wide: a phone wallpaper at 1964×3500 is 1:1.78, and
+ * squeezing it into a shorter frame is exactly what used to cut the top and
+ * bottom off. Only genuinely extreme shapes (a 1:6 scroll, a 6:1 panorama) are
+ * held back, and those are held back *without* cropping — see [PhotoFrame].
+ */
 fun cardRatio(img: SearitchImage): Float =
-    if (img.width > 0 && img.height > 0) (img.width.toFloat() / img.height).coerceIn(0.62f, 1.8f)
+    if (img.width > 0 && img.height > 0) (img.width.toFloat() / img.height).coerceIn(0.34f, 2.8f)
+    else 4f / 3f
+
+/** Bounds for a detail-panel frame: taller than a card, still not absurd. */
+fun heroRatio(img: SearitchImage): Float =
+    if (img.width > 0 && img.height > 0) (img.width.toFloat() / img.height).coerceIn(0.24f, 3.2f)
     else 4f / 3f
 
 fun displayTitle(title: String): String? {
@@ -242,6 +255,15 @@ fun PhotoCard(img: SearitchImage, index: Int, onClick: (SearitchImage) -> Unit) 
     val pal = LocalPalette.current
     val rotation = if (style == CardStyle.PRINT) tilt * appear else 0f
 
+    // The frame follows the picture, not the other way round: the metadata ratio
+    // is the placeholder, the decoded bitmap's ratio wins the moment it lands.
+    var loadedRatio by remember(img.id) { mutableStateOf(cardRatio(img)) }
+    val shownRatio by animateFloatAsState(
+        targetValue = loadedRatio,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow),
+        label = "cardRatio",
+    )
+
     Column(
         modifier = Modifier
             .graphicsLayer {
@@ -271,12 +293,21 @@ fun PhotoCard(img: SearitchImage, index: Int, onClick: (SearitchImage) -> Unit) 
                 .background(pal.paperWell),
         ) {
             AsyncImage(
-                model = img.thumb,
+                // the ratio-honest rendition, not the fixed-crop one
+                model = img.cardPicture(),
                 contentDescription = img.title,
-                contentScale = ContentScale.Crop,
+                // Fit, never Crop: the picture is shown whole. The frame is sized
+                // to the bitmap that actually arrives, so "fit" leaves no bars.
+                contentScale = ContentScale.Fit,
                 // decoding at card size (not full source size) keeps scrolling at
                 // 120Hz: no multi-megapixel downscales on the main thread
-                modifier = Modifier.fillMaxWidth().aspectRatio(cardRatio(img)),
+                onSuccess = { state ->
+                    val bmp = state.result.image
+                    if (bmp.width > 0 && bmp.height > 0) {
+                        loadedRatio = (bmp.width.toFloat() / bmp.height).coerceIn(0.34f, 2.8f)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().aspectRatio(shownRatio),
             )
         }
     }

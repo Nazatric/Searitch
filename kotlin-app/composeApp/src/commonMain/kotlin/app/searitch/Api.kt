@@ -326,9 +326,14 @@ object Api {
                 id = "wallhaven:${r.id}",
                 provider = "wallhaven",
                 title = "Wallpaper ${r.dimensionX ?: 0}×${r.dimensionY ?: 0}",
-                thumb = r.thumbs?.small ?: r.thumbs?.original ?: r.path ?: "",
-                // `large` is ~1920px: sharp on a phone, a fraction of the original
-                preview = r.thumbs?.large ?: r.thumbs?.original,
+                // `small` (300×200) and `lg` (432×243) are fixed landscape
+                // CROPS — a 1964×3500 phone wall arrives as a 432×243 slice of
+                // its middle. `original` is the only rendition that keeps the
+                // real shape, and it is still a small file (213×300 for that
+                // wall). Cropping it again in the UI is what produced the
+                // zoomed-in fragments.
+                thumb = ratioHonest(r.thumbs?.original) ?: r.path ?: "",
+                preview = ratioHonest(r.thumbs?.original) ?: r.path,
                 full = r.path ?: "",
                 width = r.dimensionX ?: 0,
                 height = r.dimensionY ?: 0,
@@ -589,8 +594,11 @@ object Api {
                 id = "inat:${o.id}",
                 provider = "inaturalist",
                 title = name,
-                thumb = photo.url,
-                thumbFallback = photo.url,
+                // `/square.` is a 75px square crop; `/small.` is the same photo
+                // at up to 500px with its real shape.
+                thumb = photo.url.replace("/square.", "/small."),
+                thumbFallback = photo.url.replace("/square.", "/small."),
+                preview = photo.url.replace("/square.", "/large."),
                 full = photo.url.replace("/square.", "/original."),
                 width = photo.dims?.width ?: 0,
                 height = photo.dims?.height ?: 0,
@@ -855,11 +863,20 @@ object Api {
             // "1920 x 1080" size; it ends where the next card begins.
             val end = cards.getOrNull(i + 1)?.range?.first ?: html.length
             val region = html.substring(card.range.last + 1, end)
-            // The thumbnail sits in raw HTML, so its query string is still
-            // entity-escaped — leave `&amp;` in place and the load fails.
-            val thumb = Regex("(https://th\\.bing\\.com/th/id/[^\"'\\s]+)").find(region)
+            // The visible thumbnail is a fixed w×h CROP (that is what the `w=`,
+            // `h=` and `c=7` in its query mean). The card's own link carries
+            // `cdnurl=` — the same image through Bing's cache at `pid=ImgRaw`,
+            // which keeps its real shape. Prefer that; fall back to the crop.
+            val cdn = Regex("cdnurl=([^\"&]+)").find(region)
+                ?.groupValues?.get(1)
+                ?.let { percentDecode(it).replace("&amp;", "&") }
+                ?.takeIf { it.startsWith("http") }
+            // Raw HTML, so the query string is still entity-escaped — leave
+            // `&amp;` in place and the load fails.
+            val crop = Regex("(https://th\\.bing\\.com/th/id/[^\"'\\s]+)").find(region)
                 ?.groupValues?.get(1)
                 ?.replace("&amp;", "&")
+            val thumb = cdn ?: crop
             val dims = Regex("(\\d{2,5})\\s*[x\u00d7]\\s*(\\d{2,5})").find(region)
             out += WebHit(
                 media = media,
@@ -931,7 +948,9 @@ object Api {
                 provider = "bing",
                 title = hit.title.ifBlank { host ?: "Web image" }.take(140),
                 thumb = hit.thumb ?: hit.media,
-                preview = hit.media,
+                // the cached raw rendition paints the hero first; the page's own
+                // file is only fetched when it is genuinely bigger
+                preview = hit.thumb ?: hit.media,
                 full = hit.media,
                 width = hit.width,
                 height = hit.height,
