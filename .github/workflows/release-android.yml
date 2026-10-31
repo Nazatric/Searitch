@@ -6,11 +6,12 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v0.1"
+        default: "v0.2"
   push:
     branches:
       - "arena/1b4ed963-searitch"
     paths:
+      - "kotlin-app/**"
       - ".github/workflows/release-android.yml"
 
 permissions:
@@ -18,10 +19,31 @@ permissions:
   issues: write
 
 env:
-  ZIP_NAME: searitch-universal-image-search-app.zip
-  APP_DIR: ${{ github.workspace }}/build-src/kotlin-app
+  APP_DIR: ${{ github.workspace }}/kotlin-app
 
 jobs:
+  # Informational: the web target shares all the common code, so a compile
+  # there catches mistakes that an Android-only build would silently accept.
+  web-check:
+    name: Verify shared code compiles for web
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Restore wrapper jar and compile wasm target
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          set -euo pipefail
+          [ -f gradle/wrapper/gradle-wrapper.jar ] || gradle wrapper --gradle-version 8.11.1 --no-configuration-cache
+          ./gradlew :composeApp:compileKotlinWasmJs --no-configuration-cache --stacktrace 2>&1 | tail -60
+
   build:
     name: Build arm64-v8a + armeabi-v7a APKs
     runs-on: ubuntu-latest
@@ -40,16 +62,8 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
-      - name: Unpack app source from repository zip
-        run: |
-          set -euo pipefail
-          mkdir -p build-src
-          unzip -qo "$ZIP_NAME" -d build-src
-          chmod +x "$APP_DIR/gradlew"
-          ls -la "$APP_DIR"
-
-      # The zip ships gradlew/gradle-wrapper.properties but no wrapper jar.
-      # Regenerate the jar so the project's own wrapper settings are used.
+      # The upstream archive had no wrapper jar; regenerate it so the project's
+      # own wrapper settings (Gradle 8.11.1) drive the build.
       - name: Restore Gradle wrapper jar
         working-directory: ${{ env.APP_DIR }}
         run: |
@@ -59,18 +73,6 @@ jobs:
             gradle wrapper --gradle-version 8.11.1 --no-configuration-cache
           fi
           ls -l gradle/wrapper/
-
-      # The zip imports `cinzel_bold`, `leather` and `paper` from Compose
-      # resources but ships no composeResources/ tree. Those exact assets are
-      # embedded in the web app's generated stylesheet, so recover them there
-      # instead of touching any zipped source file.
-      - name: Restore missing Compose resources
-        run: |
-          set -euo pipefail
-          python3 -m pip install --quiet fonttools brotli pillow
-          python3 "${{ github.workspace }}/scripts/ci/prepare-compose-resources.py" \
-            --css "${{ github.workspace }}/build-src/src/app/textures.css" \
-            --resources "${{ env.APP_DIR }}/composeApp/src/commonMain/composeResources"
 
       - name: Ensure Android SDK components
         run: |
@@ -82,8 +84,8 @@ jobs:
             "platforms;android-35" "build-tools;35.0.0" "platform-tools" > /dev/null
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
 
-      # ABI splits are injected through an init script so the app's own
-      # build files in the zip stay completely unmodified.
+      # ABI splits are injected through an init script so the app's build files
+      # stay untouched and arm64/arm32 packages come out of one build.
       - name: Write ABI split init script
         run: |
           cat > "${{ github.workspace }}/abi-splits.gradle" <<'EOF'
@@ -140,9 +142,9 @@ jobs:
           for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk" | sort); do
             base=$(basename "$apk")
             case "$base" in
-              *arm64*)   name="Searitch-v0.1-arm64-v8a.apk" ;;
-              *armeabi*) name="Searitch-v0.1-armeabi-v7a.apk" ;;
-              *)         name="Searitch-v0.1-$base" ;;
+              *arm64*)   name="Searitch-v0.2-arm64-v8a.apk" ;;
+              *armeabi*) name="Searitch-v0.2-armeabi-v7a.apk" ;;
+              *)         name="Searitch-v0.2-$base" ;;
             esac
             echo "--- $base -> $name"
 
@@ -193,33 +195,38 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || 'v0.1' }}
+          TAG: ${{ github.event.inputs.tag || 'v0.2' }}
         run: |
           set -euo pipefail
           cat > notes.md <<'EOF'
           Searitch — universal image search app (Compose Multiplatform).
 
-          Built straight from `searitch-universal-image-search-app.zip` (source unmodified).
+          ## What changed in v0.2
 
-          **Assets**
-          - `Searitch-v0.1-arm64-v8a.apk` — 64-bit ARM (arm64-v8a)
-          - `Searitch-v0.1-armeabi-v7a.apk` — 32-bit ARM (armeabi-v7a)
-          - `searitch-release.keystore` — signing key for this release (store/key password: `searitch2026`, alias `searitch`)
+          - **Download actually downloads.** The button now streams the file into
+            `Download/Searitch` on the device (MediaStore on Android 10+) instead of
+            opening the image in a browser. It shows Saving → Saved, then settles back.
+          - **Settings gear** on every screen, top corner. The cog spins as the sheet
+            opens. Everything is live and remembered:
+            search-field placement (top strap / bottom dock), card density, card style,
+            leather / paper / metal tones, real-texture toggle, animations, haptics,
+            similar-images toggle, download quality, search defaults, and the cache.
+          - **Back no longer re-searches.** Results, paging and scroll position live in a
+            session above the navigation graph, so returning from a photo lands exactly
+            where you left instead of shuffling in a fresh, different feed.
+          - **Two-layer cache:** instant in-memory LRU plus a per-feed disk cache, shown
+            as `CACHED` while a stale feed refreshes quietly behind it.
+          - **Navigation:** a real back stack with system back / gesture back, shared
+            element transitions, and a settings sheet that closes on back.
+
+          ## Assets
+
+          - `Searitch-v0.2-arm64-v8a.apk` — 64-bit ARM (arm64-v8a)
+          - `Searitch-v0.2-armeabi-v7a.apk` — 32-bit ARM (armeabi-v7a)
+          - `searitch-release.keystore` — signing key (pass `searitch2026`, alias `searitch`)
           - `SHA256SUMS.txt`
 
-          Package: `app.searitch` · versionName `1.0.0` · minSdk 24 · targetSdk 35
-
-          ## Build notes
-
-          - Source came from `searitch-universal-image-search-app.zip`; no zipped file was edited.
-            The archive ships no `composeResources/` tree even though `Theme.kt` imports
-            `cinzel_bold`, `leather` and `paper`, so CI recovered those exact assets from the
-            web app's generated `src/app/textures.css` (WOFF2 → TTF, WebP → PNG) to make the
-            Kotlin sources compile.
-          - APKs are signed with a throwaway key generated per build; the keystore is attached.
-
-          ## Verification
-
+          Package `app.searitch` · versionName 1.1.0 · versionCode 2 · minSdk 24 · targetSdk 35
           EOF
           cat out/verify.md >> notes.md
           gh release view "$TAG" > /dev/null 2>&1 && gh release delete "$TAG" --yes --cleanup-tag || true
@@ -227,7 +234,7 @@ jobs:
             --title "Searitch $TAG" \
             --notes-file notes.md \
             --target "$GITHUB_SHA" \
-            out/Searitch-v0.1-arm64-v8a.apk \
-            out/Searitch-v0.1-armeabi-v7a.apk \
+            out/Searitch-v0.2-arm64-v8a.apk \
+            out/Searitch-v0.2-armeabi-v7a.apk \
             out/searitch-release.keystore \
             out/SHA256SUMS.txt
