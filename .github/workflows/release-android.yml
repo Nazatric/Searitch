@@ -6,13 +6,13 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v0.10"
+        default: "v0.11"
   push:
     branches:
       # the working branch Arena is on; keep the last one too so a rebase or a
       # branch switch doesn't silently stop the build
+      - "arena/5a0be822-searitch"
       - "arena/8747d8f4-searitch"
-      - "arena/b658bb31-searitch"
     paths:
       - "kotlin-app/**"
       - ".github/workflows/release-android.yml"
@@ -178,9 +178,9 @@ jobs:
           for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk" | sort); do
             base=$(basename "$apk")
             case "$base" in
-              *arm64*)   name="Searitch-v0.10-arm64-v8a.apk" ;;
-              *armeabi*) name="Searitch-v0.10-armeabi-v7a.apk" ;;
-              *)         name="Searitch-v0.10-$base" ;;
+              *arm64*)   name="Searitch-v0.11-arm64-v8a.apk" ;;
+              *armeabi*) name="Searitch-v0.11-armeabi-v7a.apk" ;;
+              *)         name="Searitch-v0.11-$base" ;;
             esac
             echo "--- $base -> $name"
 
@@ -232,44 +232,44 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || 'v0.10' }}
+          TAG: ${{ github.event.inputs.tag || 'v0.11' }}
         run: |
           set -euo pipefail
           cat > notes.md <<'EOF'
-          ### v0.10 — every picture, whole
+          ### v0.11 — the hero actually finishes
 
-          `versionCode 10` · `versionName 1.7.0`
+          `versionCode 11` · `versionName 1.7.1`
 
-          **Tall images are no longer sliced**
+          **A one-line bug, causing the worst symptom yet**
 
-          Wallhaven publishes two thumbnails, and both are fixed landscape crops:
-          `small` is 300×200 and `lg` is 432×243, whatever shape the wallpaper is.
-          A 1964×3500 phone wall therefore arrived as a wide slice of its middle,
-          and the grid cropped that slice again to fit — the zoomed-in fragments
-          you saw. A source's reported shape is now only the starting frame: the
-          decoded bitmap has the last word, and pictures are drawn whole.
+          The detail view asked the image library "have you finished?" exactly once,
+          at the moment the screen opened, and then never listened again. The
+          library's answer arrives as a stream, not a value, so the answer was
+          always "not yet" — forever. The badge sat on `FINISHING` and the sharp
+          version stayed invisible even after the full-size file had already been
+          downloaded and cached, which is why Download handed you the original
+          file instantly while the app was still "finishing". It now subscribes to
+          that stream, so the badge clears and the sharp image fades in the moment
+          the decode lands.
 
-          **Nothing is cropped, and nothing sits in black bars**
+          **A failure now says so**
 
-          Cards and the detail panel draw with fit, inside a frame sized to the
-          picture itself, so there is no crop and no letterbox. Where a source
-          can only offer an approximate shape, the leftover is paper stock, not
-          black.
+          If the full-size file genuinely can't be fetched, the badge becomes
+          `TAP TO RETRY` instead of pretending to work. The retry issues a fresh
+          request rather than replaying the cached failure.
 
-          **Sharper where it matters**
+          **No more flashing tag**
 
-          Wallhaven's ratio-preserving thumbnail is small, so the detail view now
-          fetches the full wallpaper instead of upscaling a 213px thumb. Bing
-          cards use the raw cached rendition (`pid=ImgRaw`) rather than its
-          cropped `w=215&h=180` thumbnail, and iNaturalist photos use the 500px
-          `small` rendition instead of its 75px square crop.
+          The badge waits 400 ms before appearing, so an image that is already
+          cached — most of them, coming back from a search — opens straight to
+          sharp with no tag at all.
 
           ### Assets
 
           | File | For |
           | --- | --- |
-          | `Searitch-v0.10-arm64-v8a.apk` | almost every phone since 2017 |
-          | `Searitch-v0.10-armeabi-v7a.apk` | older 32-bit devices |
+          | `Searitch-v0.11-arm64-v8a.apk` | almost every phone since 2017 |
+          | `Searitch-v0.11-armeabi-v7a.apk` | older 32-bit devices |
           | `searitch-release.keystore` | signing key — password `searitch2026`, alias `searitch` |
           | `SHA256SUMS.txt` | checksums |
           EOF
@@ -279,7 +279,7 @@ jobs:
             --title "Searitch $TAG" \
             --notes-file notes.md \
             --target "$GITHUB_SHA" \
-            out/Searitch-v0.10-arm64-v8a.apk \
-            out/Searitch-v0.10-armeabi-v7a.apk \
+            out/Searitch-v0.11-arm64-v8a.apk \
+            out/Searitch-v0.11-armeabi-v7a.apk \
             out/searitch-release.keystore \
             out/SHA256SUMS.txt

@@ -44,7 +44,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -66,7 +68,12 @@ import androidx.compose.ui.zIndex
 import coil3.Image as CoilImage
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
+import coil3.compose.LocalPlatformContext
 import coil3.compose.rememberAsyncImagePainter
+import coil3.request.ImageRequest
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -145,16 +152,57 @@ fun DetailScreen(
 
     val rendition = remember(img.id) { heroRendition(img) }
     val firstPainter = rememberAsyncImagePainter(model = rendition.first)
-    val sharpPainter = rendition.sharp?.let { rememberAsyncImagePainter(model = it) }
-    val sharpLoaded = sharpPainter?.state is AsyncImagePainter.State.Success
+
+    /*
+     * Coil's `painter.state` is a StateFlow, not Compose state: reading it with an
+     * `is` check compiles, evaluates exactly once, and then never updates. That is
+     * why the badge sat on "FINISHING" forever with the full-size image already
+     * downloaded and cached — the UI had simply stopped listening. The states are
+     * collected as Compose state below, so the badge clears and the sharp version
+     * appears the moment the decode lands.
+     */
+    var retryTick by remember(img.id) { mutableIntStateOf(0) }
+    val platformContext = LocalPlatformContext.current
+    val sharpModel: Any? = remember(img.id, retryTick) {
+        val url = rendition.sharp
+        when {
+            url == null -> null
+            // First attempt: the plain URL, so it shares Coil's cache with the
+            // rest of the app. A retry needs a new memory-cache key, otherwise
+            // Coil would replay the cached failure and the button would do nothing.
+            retryTick == 0 -> url
+            else -> ImageRequest.Builder(platformContext)
+                .data(url)
+                .memoryCacheKey("$url#retry$retryTick")
+                .build()
+        }
+    }
+    val sharpPainter = sharpModel?.let { rememberAsyncImagePainter(model = it) }
+
+    val firstState by firstPainter.state.collectAsState()
+    // An explicitly typed flow, so `collectAsState()` picks the StateFlow overload
+    // and needs no initial value.
+    val idle = remember { MutableStateFlow<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
+    val sharpFlow: StateFlow<AsyncImagePainter.State> = sharpPainter?.state ?: idle
+    val sharpState by sharpFlow.collectAsState()
+
+    val sharpLoaded = sharpState is AsyncImagePainter.State.Success
+    val sharpFailed = sharpState is AsyncImagePainter.State.Error
+    // Cached images decode in a frame or two; a badge that flashes on every open
+    // is noise, so it waits until the fetch is genuinely taking a moment.
+    var waited by remember(img.id) { mutableStateOf(false) }
+    LaunchedEffect(img.id) {
+        delay(400)
+        waited = true
+    }
     val sharpAlpha by animateFloatAsState(
         targetValue = if (sharpLoaded) 1f else 0f,
         animationSpec = tween(if (settings.motion) 260 else 0),
         label = "heroSharpen",
     )
     val decodedHero: CoilImage? =
-        ((sharpPainter?.state ?: firstPainter.state) as? AsyncImagePainter.State.Success)
-            ?.result?.image
+        (sharpState as? AsyncImagePainter.State.Success)?.result?.image
+            ?: (firstState as? AsyncImagePainter.State.Success)?.result?.image
 
     /*
      * The frame is sized to the picture, and the picture is drawn whole.
@@ -260,18 +308,32 @@ fun DetailScreen(
                                     .graphicsLayer { alpha = sharpAlpha },
                             )
                         }
-                        // a quiet brass thread instead of a blank wait
-                        if (sharpPainter != null && !sharpLoaded) {
+                        /*
+                         * The tag reports what is actually happening. While the
+                         * full-size file is in flight it says so; if the fetch
+                         * fails it stops pretending and offers the retry that
+                         * used to be missing — a badge that never clears is worse
+                         * than no badge at all.
+                         */
+                        if (sharpPainter != null && !sharpLoaded && (sharpFailed || waited)) {
+                            val failed = sharpFailed
                             Box(
                                 Modifier
                                     .align(Alignment.BottomEnd)
                                     .padding(8.dp)
                                     .clip(CircleShape)
+                                    .then(
+                                        if (failed) {
+                                            Modifier.clickable { retryTick++ }
+                                        } else {
+                                            Modifier
+                                        },
+                                    )
                                     .background(Color(0xCC1C1008))
                                     .padding(horizontal = 9.dp, vertical = 5.dp),
                             ) {
                                 Text(
-                                    "FINISHING",
+                                    if (failed) "TAP TO RETRY" else "FINISHING",
                                     color = Ink.thread,
                                     fontSize = 8.5.sp,
                                     fontWeight = FontWeight.Black,
