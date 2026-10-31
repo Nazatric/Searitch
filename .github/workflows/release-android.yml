@@ -6,13 +6,13 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v0.9"
+        default: "v0.10"
   push:
     branches:
       # the working branch Arena is on; keep the last one too so a rebase or a
       # branch switch doesn't silently stop the build
+      - "arena/8747d8f4-searitch"
       - "arena/b658bb31-searitch"
-      - "arena/89730b10-searitch"
     paths:
       - "kotlin-app/**"
       - ".github/workflows/release-android.yml"
@@ -178,9 +178,9 @@ jobs:
           for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk" | sort); do
             base=$(basename "$apk")
             case "$base" in
-              *arm64*)   name="Searitch-v0.9-arm64-v8a.apk" ;;
-              *armeabi*) name="Searitch-v0.9-armeabi-v7a.apk" ;;
-              *)         name="Searitch-v0.9-$base" ;;
+              *arm64*)   name="Searitch-v0.10-arm64-v8a.apk" ;;
+              *armeabi*) name="Searitch-v0.10-armeabi-v7a.apk" ;;
+              *)         name="Searitch-v0.10-$base" ;;
             esac
             echo "--- $base -> $name"
 
@@ -232,52 +232,44 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || 'v0.9' }}
+          TAG: ${{ github.event.inputs.tag || 'v0.10' }}
         run: |
           set -euo pipefail
           cat > notes.md <<'EOF'
-          ### v0.9 — thirteen sources, filters that mean what they say
+          ### v0.10 — every picture, whole
 
-          `versionCode 9` · `versionName 1.6.0`
+          `versionCode 10` · `versionName 1.7.0`
 
-          **Bing, and three more museums**
+          **Tall images are no longer sliced**
 
-          Bing now searches the open web: its images feed answers without a key,
-          and it takes the colour, orientation and size filters as real query
-          parameters instead of keywords. Added alongside it are the Art
-          Institute of Chicago, the Cleveland Museum of Art and the Library of
-          Congress — all keyless, all public domain or CC0. Thirteen sources in
-          total, still queried in parallel and streamed as they answer.
+          Wallhaven publishes two thumbnails, and both are fixed landscape crops:
+          `small` is 300×200 and `lg` is 432×243, whatever shape the wallpaper is.
+          A 1964×3500 phone wall therefore arrived as a wide slice of its middle,
+          and the grid cropped that slice again to fit — the zoomed-in fragments
+          you saw. A source's reported shape is now only the starting frame: the
+          decoded bitmap has the last word, and pictures are drawn whole.
 
-          **A colour filter that returns that colour**
+          **Nothing is cropped, and nothing sits in black bars**
 
-          A source is only searched when it can honour the filter. Picking a
-          colour now searches Bing, Wallhaven and Openverse — the three that
-          really filter by colour — and leaves out the sources with no colour
-          metadata, rather than returning unrelated pictures. A licence filter
-          does the same in reverse: only sources that publish a licence are
-          asked, so nothing is passed off as commercial use when it isn't.
+          Cards and the detail panel draw with fit, inside a frame sized to the
+          picture itself, so there is no crop and no letterbox. Where a source
+          can only offer an approximate shape, the leftover is paper stock, not
+          black.
 
-          **Similar images that use the subject, not the filename**
+          **Sharper where it matters**
 
-          Related sets are built from the source's own tags, falling back to the
-          subject words of the title with catalogue noise — "Untitled", "photo",
-          "public domain" — stripped out. Museum titles no longer search for
-          "one of a pair".
-
-          **A source that fails is now a source that's skipped**
-
-          Transport errors and 5xx responses count against a source again; before,
-          they were swallowed and a broken endpoint was re-queried on every
-          search. Non-200 responses from a source's search are no longer parsed as
-          "no results".
+          Wallhaven's ratio-preserving thumbnail is small, so the detail view now
+          fetches the full wallpaper instead of upscaling a 213px thumb. Bing
+          cards use the raw cached rendition (`pid=ImgRaw`) rather than its
+          cropped `w=215&h=180` thumbnail, and iNaturalist photos use the 500px
+          `small` rendition instead of its 75px square crop.
 
           ### Assets
 
           | File | For |
           | --- | --- |
-          | `Searitch-v0.9-arm64-v8a.apk` | almost every phone since 2017 |
-          | `Searitch-v0.9-armeabi-v7a.apk` | older 32-bit devices |
+          | `Searitch-v0.10-arm64-v8a.apk` | almost every phone since 2017 |
+          | `Searitch-v0.10-armeabi-v7a.apk` | older 32-bit devices |
           | `searitch-release.keystore` | signing key — password `searitch2026`, alias `searitch` |
           | `SHA256SUMS.txt` | checksums |
           EOF
@@ -287,7 +279,7 @@ jobs:
             --title "Searitch $TAG" \
             --notes-file notes.md \
             --target "$GITHUB_SHA" \
-            out/Searitch-v0.9-arm64-v8a.apk \
-            out/Searitch-v0.9-armeabi-v7a.apk \
+            out/Searitch-v0.10-arm64-v8a.apk \
+            out/Searitch-v0.10-armeabi-v7a.apk \
             out/searitch-release.keystore \
             out/SHA256SUMS.txt

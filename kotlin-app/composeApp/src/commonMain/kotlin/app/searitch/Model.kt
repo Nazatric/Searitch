@@ -3,6 +3,29 @@ package app.searitch
 import androidx.compose.runtime.Immutable
 import kotlinx.serialization.Serializable
 
+/**
+ * Wallhaven serves `/small/` at 300×200 and `/lg/` at 432×243 — fixed landscape
+ * crops, whatever the wallpaper's real shape. Drawing one of those in a portrait
+ * frame crops the crop again, which is why a tall illustration arrived looking
+ * like a zoomed-in fragment. `/orig/` is the only rendition that keeps the real
+ * aspect ratio, and it is still a thumbnail (a 1559×2197 wall arrives at
+ * 213×300), so it costs nothing.
+ *
+ * Applied at display time as well as when a result is parsed, so feeds already
+ * written to disk by an older build are repaired without a migration.
+ */
+fun ratioHonest(url: String?): String? {
+    if (url.isNullOrBlank()) return null
+    if (!url.contains("th.wallhaven.cc")) return url
+    return url.replace("/small/", "/orig/").replace("/lg/", "/orig/")
+}
+
+/** The rendition a grid card draws. */
+fun SearitchImage.cardPicture(): String = ratioHonest(thumb) ?: full
+
+/** The rendition the detail hero paints first. */
+fun SearitchImage.heroPicture(): String = ratioHonest(preview) ?: cardPicture()
+
 /** One normalized image result, regardless of which source it came from. */
 @Immutable
 @Serializable

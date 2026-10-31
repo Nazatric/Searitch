@@ -71,6 +71,21 @@ That table is the contract the filters work to, not decoration:
 > Android build only and stay quiet in the browser build. Everything else works
 > in both.
 
+### How pictures are drawn
+
+Frames follow pictures, not the other way round. A card or the detail panel
+starts at the shape the source reported, then takes the shape of the bitmap that
+actually decodes, and draws it whole — so a 1:1.8 phone wallpaper is shown as a
+1:1.8 frame, not sliced into a landscape tile.
+
+That means fixing the renditions at the source, because some APIs only publish
+crops: Wallhaven's `small` and `lg` thumbs are 300×200 and 432×243 crops for
+every wallpaper (its `/orig/` thumb keeps the real shape), Bing's visible
+thumbnail is a `w=215&h=180` crop (its `pid=ImgRaw` cache is not), and
+iNaturalist's `/square.` is a 75px square (its `/small.` is 500px and true to the
+photo). All three are requested in their honest form, and any URL already written
+to the on-disk feed cache by an older build is rewritten at display time.
+
 ## Materials
 
 The UI is not a skin over stock Material components. Every surface is drawn from

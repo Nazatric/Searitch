@@ -1,3 +1,20 @@
+## v0.10 — 1 Nov 2026
+
+`versionCode 10` · `versionName 1.7.0`
+
+**Every picture, whole.** Wallhaven's two thumbnail renditions are both fixed
+landscape crops — 300×200 and 432×243 whatever the wallpaper's shape — so a
+1964×3500 phone wall arrived as a wide slice of its middle and the grid cropped
+that slice again. Cards and the detail panel now size their frame to the picture
+that actually arrives and draw it whole: no crop, and no letterbox either.
+
+**Sharper where it counts.** The detail view fetches the full wallpaper rather
+than upscaling Wallhaven's small ratio-honest thumb. Bing uses its raw cached
+rendition instead of the `w=215&h=180` crop, and iNaturalist uses the 500px
+`small` photo instead of the 75px square.
+
+---
+
 ## v0.9 — 1 Nov 2026
 
 `versionCode 9` · `versionName 1.6.0`

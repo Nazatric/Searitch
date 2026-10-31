@@ -3,6 +3,8 @@
 package app.searitch
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -78,12 +80,16 @@ import kotlinx.coroutines.launch
 private data class HeroRendition(val first: String, val sharp: String?)
 
 private fun heroRendition(img: SearitchImage): HeroRendition {
-    val preview = img.preview?.takeIf { it.isNotBlank() }
-    val first = preview ?: img.thumb.ifBlank { img.full }
-    // a preview this wide is indistinguishable from the original on a phone
+    // ratioHonest() rewrites a Wallhaven fixed-crop thumb to its /orig/ form.
+    val preview = img.heroPicture()
+    val first = preview.ifBlank { img.full }
+    // A hero is at most a phone wide (~1400px at 3x), so a preview at or above
+    // that is already indistinguishable from the original and fetching it would
+    // be waste. Below it — a Wallhaven `/orig/` thumb is 213px wide — the original
+    // is fetched, or the hero would be an upscale.
     val sharp = when {
-        preview == null -> img.full.takeIf { it != first }
-        img.width in 1..2600 -> null
+        preview.isBlank() -> img.full.takeIf { it != first }
+        img.width in 1..1400 -> null
         else -> img.full.takeIf { it != first }
     }
     return HeroRendition(first, sharp)
@@ -137,11 +143,6 @@ fun DetailScreen(
         related = fresh
     }
 
-    val ratio = if (img.width > 0 && img.height > 0) {
-        (img.width.toFloat() / img.height).coerceIn(0.5f, 2.2f)
-    } else {
-        4f / 3f
-    }
     val rendition = remember(img.id) { heroRendition(img) }
     val firstPainter = rememberAsyncImagePainter(model = rendition.first)
     val sharpPainter = rendition.sharp?.let { rememberAsyncImagePainter(model = it) }
@@ -154,6 +155,27 @@ fun DetailScreen(
     val decodedHero: CoilImage? =
         ((sharpPainter?.state ?: firstPainter.state) as? AsyncImagePainter.State.Success)
             ?.result?.image
+
+    /*
+     * The frame is sized to the picture, and the picture is drawn whole.
+     *
+     * The reported dimensions are the starting frame, but a source can report one
+     * shape and send another, and a card can be opened from a cached feed — so
+     * the decoded bitmap has the last word. Fit (never Crop) then means the whole
+     * image is visible with no bars, because the frame is already its shape.
+     */
+    var frameRatio by remember(img.id) { mutableStateOf(heroRatio(img)) }
+    LaunchedEffect(decodedHero) {
+        val bmp = decodedHero
+        if (bmp != null && bmp.width > 0 && bmp.height > 0) {
+            frameRatio = (bmp.width.toFloat() / bmp.height).coerceIn(0.24f, 3.2f)
+        }
+    }
+    val shownHeroRatio by animateFloatAsState(
+        targetValue = frameRatio,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow),
+        label = "heroRatio",
+    )
     // On Android 14+, the window switches to HDR only when this decoded image
     // actually contains an Ultra HDR gain map. SDR sources remain ordinary SDR.
     PlatformHdrWindow(image = decodedHero, enabled = true)
@@ -218,21 +240,21 @@ fun DetailScreen(
                         Modifier
                             .sharedPhoto(img.id)
                             .fillMaxWidth()
-                            .aspectRatio(ratio)
+                            .aspectRatio(shownHeroRatio)
                             .clip(RoundedCornerShape(3.dp))
                             .background(Paper.imageWell),
                     ) {
                         ComposeImage(
                             painter = firstPainter,
                             contentDescription = img.title,
-                            contentScale = ContentScale.Crop,
+                            contentScale = ContentScale.Fit,
                             modifier = Modifier.fillMaxSize(),
                         )
                         if (sharpPainter != null) {
                             ComposeImage(
                                 painter = sharpPainter,
                                 contentDescription = null,
-                                contentScale = ContentScale.Crop,
+                                contentScale = ContentScale.Fit,
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .graphicsLayer { alpha = sharpAlpha },
