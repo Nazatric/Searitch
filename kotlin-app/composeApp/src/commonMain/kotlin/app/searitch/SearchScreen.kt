@@ -92,12 +92,18 @@ private fun buildFacets(results: List<SearitchImage>, f: Filters): List<Facet> {
             if (t != null && n >= 3 && f.type != t) out += Facet("${t.label} only", n, f.copy(type = t))
         }
     val siteMap = mapOf(
+        "bing" to ProviderFilter.BING,
+        "openverse" to ProviderFilter.OPENVERSE,
         "flickr" to ProviderFilter.FLICKR,
         "wallhaven" to ProviderFilter.WALLHAVEN,
         "wikimedia commons" to ProviderFilter.WIKIMEDIA,
         "inaturalist" to ProviderFilter.INATURALIST,
         "nasa" to ProviderFilter.NASA,
         "the met" to ProviderFilter.MET,
+        "art institute of chicago" to ProviderFilter.AIC,
+        "cleveland museum of art" to ProviderFilter.CLEVELAND,
+        "library of congress" to ProviderFilter.LOC,
+        "europeana" to ProviderFilter.EUROPEANA,
         "v&a museum" to ProviderFilter.VAM,
     )
     results.groupingBy { it.sourceSite }.eachCount().entries
@@ -587,6 +593,14 @@ private fun FilterSheet(
             FilterSection("SIZE", SizeFilter.entries, draft.size, { it.label }) { onChange(draft.copy(size = it)) }
             Column {
                 SectionLabel("COLOR")
+                Text(
+                    "Bing and Wallhaven filter by colour in their own index; " +
+                        "Openverse matches it as a search word. Sources with no colour " +
+                        "data sit this search out rather than show the wrong colour.",
+                    color = Ink.faint,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(9.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp),
@@ -608,7 +622,20 @@ private fun FilterSheet(
                     }
                 }
             }
-            FilterSection("LICENSE", LicenseFilter.entries, draft.license, { it.label }) { onChange(draft.copy(license = it)) }
+            Column {
+                FilterSection("LICENSE", LicenseFilter.entries, draft.license, { it.label }) {
+                    onChange(draft.copy(license = it))
+                }
+                Text(
+                    "Only sources that publish a licence are searched: the museums, " +
+                        "Openverse, Wikimedia, NASA, iNaturalist, Europeana and the V&A. " +
+                        "Bing, Wallhaven and Flickr index other people's pages and are " +
+                        "left out of a licence-filtered search.",
+                    color = Ink.faint,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 5.dp),
+                )
+            }
             FilterSection("SOURCE", ProviderFilter.entries, draft.provider, { it.label }) { onChange(draft.copy(provider = it)) }
 
             Column {
@@ -618,7 +645,10 @@ private fun FilterSheet(
                     SearitchChip("Off (Unrestricted)", !draft.safe) { onChange(draft.copy(safe = false)) }
                 }
                 Text(
-                    "Hides adult or explicit content identified by the source. Some sources provide limited safety metadata.",
+                    "Bing and Wallhaven filter server-side. Openverse has its own mature " +
+                        "flag and Commons, NASA, the museums and the Library of Congress are " +
+                        "curated collections. Flickr's public feed has no rating metadata at " +
+                        "all, so it is skipped while safe search is on.",
                     color = Ink.faint,
                     fontSize = 11.sp,
                     modifier = Modifier.padding(top = 5.dp),
