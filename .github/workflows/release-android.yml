@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v0.3"
+        default: "v0.4"
   push:
     branches:
       - "arena/1b4ed963-searitch"
@@ -168,9 +168,9 @@ jobs:
           for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk" | sort); do
             base=$(basename "$apk")
             case "$base" in
-              *arm64*)   name="Searitch-v0.3-arm64-v8a.apk" ;;
-              *armeabi*) name="Searitch-v0.3-armeabi-v7a.apk" ;;
-              *)         name="Searitch-v0.3-$base" ;;
+              *arm64*)   name="Searitch-v0.4-arm64-v8a.apk" ;;
+              *armeabi*) name="Searitch-v0.4-armeabi-v7a.apk" ;;
+              *)         name="Searitch-v0.4-$base" ;;
             esac
             echo "--- $base -> $name"
 
@@ -221,45 +221,32 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || 'v0.3' }}
+          TAG: ${{ github.event.inputs.tag || 'v0.4' }}
         run: |
           set -euo pipefail
           cat > notes.md <<'EOF'
           Searitch — universal image search app (Compose Multiplatform).
 
-          ## v0.3 — settings that actually change the app
+          ## v0.4 — Classic hide is back to v0.1
 
-          Every control in the gear now does something you can see immediately; the
-          sheet applies live instead of hiding changes behind an Apply button.
+          Classic hide and Cream stock draw the **original bitmaps from the shipped
+          app, untinted** — so the default appearance is pixel-identical to v0.1
+          again. The generated grain maps are now used only by the other tones
+          (Espresso, Oxblood, Midnight, Olive / Parchment, Bone, Kraft), where they
+          tint correctly because there is no original texture for those colours.
 
-          - **Materials are real.** Leather, paper and metal tones used to only repaint
-            the background — the straps, cards, chips and lettering were hard-coded
-            colours. They now all read from the live palette, so a tone change restyles
-            the whole app: hide, stock, brass, thread, ink and lettering.
-          - **Grain follows the tone.** Two seamless grain maps (new hide and cotton-rag
-            paper, made for this build) are drawn over the tone colour with an overlay
-            blend, so Oxblood looks like dyed hide rather than brown with a red tint —
-            one asset, any tone, no flicker when switching.
-          - **System bars** now take the hide colour and flip icon contrast per tone.
-          - **On/off is a brass switch**, choices stay chips — the two no longer look
-            alike, same as the gear vs. the filter funnel.
-          - **A live preview** sits at the top of the sheet: hide + paper card + brass
-            button rendered exactly as the app paints them.
-          - Search-field placement (top strap / bottom dock), card density, card style,
-            textures, animations, haptics, similar images, download quality, search
-            defaults and the cache all verified wired to behaviour, not just stored.
-
-          Also from the previous build: Download saves into `Download/Searitch`, Back no
-          longer re-runs the search, and there is a two-layer feed cache.
+          Everything else is unchanged from v0.3: settings apply live and restyle the
+          whole app, Downloads save into `Download/Searitch`, Back no longer re-runs
+          the search, and feeds are cached in memory and on disk.
 
           ## Assets
 
-          - `Searitch-v0.3-arm64-v8a.apk` — 64-bit ARM (arm64-v8a)
-          - `Searitch-v0.3-armeabi-v7a.apk` — 32-bit ARM (armeabi-v7a)
+          - `Searitch-v0.4-arm64-v8a.apk` — 64-bit ARM (arm64-v8a)
+          - `Searitch-v0.4-armeabi-v7a.apk` — 32-bit ARM (armeabi-v7a)
           - `searitch-release.keystore` — signing key (pass `searitch2026`, alias `searitch`)
           - `SHA256SUMS.txt`
 
-          Package `app.searitch` · versionName 1.2.0 · versionCode 3 · minSdk 24 · targetSdk 35
+          Package `app.searitch` · versionName 1.2.1 · versionCode 4 · minSdk 24 · targetSdk 35
           EOF
           cat out/verify.md >> notes.md
           gh release view "$TAG" > /dev/null 2>&1 && gh release delete "$TAG" --yes --cleanup-tag || true
@@ -267,7 +254,7 @@ jobs:
             --title "Searitch $TAG" \
             --notes-file notes.md \
             --target "$GITHUB_SHA" \
-            out/Searitch-v0.3-arm64-v8a.apk \
-            out/Searitch-v0.3-armeabi-v7a.apk \
+            out/Searitch-v0.4-arm64-v8a.apk \
+            out/Searitch-v0.4-armeabi-v7a.apk \
             out/searitch-release.keystore \
             out/SHA256SUMS.txt

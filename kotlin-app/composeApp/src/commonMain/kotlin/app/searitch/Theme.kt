@@ -32,7 +32,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import app.searitch.resources.Res
 import app.searitch.resources.cinzel_bold
+import app.searitch.resources.leather
 import app.searitch.resources.leather_grain
+import app.searitch.resources.paper
 import app.searitch.resources.paper_grain
 import org.jetbrains.compose.resources.Font
 import org.jetbrains.compose.resources.imageResource
@@ -115,11 +117,20 @@ fun cinzel(): FontFamily = FontFamily(Font(Res.font.cinzel_bold, FontWeight.Bold
    i.e. 1:1 on a 3x phone and downsampled (crisp) on 2x. Loaded once in
    SearitchTheme.
 
-   The maps are near-white *detail* only: the colour comes from the tone chosen
-   in Settings, multiplied in at draw time. That is what makes every leather /
-   paper tone look like dyed material without shipping nine bitmaps.          */
+   Two sets ship:
+     • `leather` / `paper` — the original coloured hides from the shipped app.
+       Classic hide + Cream stock draw these verbatim, so the default look is
+       pixel-identical to v0.1.
+     • `*_grain` — grey detail maps drawn over the chosen tone with an overlay
+       blend, used for every other tone so they look like dyed material rather
+       than brown tinted red.                                                   */
 
-class Textures(val leather: ImageBitmap, val paper: ImageBitmap)
+class Textures(
+    val leather: ImageBitmap,
+    val paper: ImageBitmap,
+    val leatherGrain: ImageBitmap,
+    val paperGrain: ImageBitmap,
+)
 
 val LocalTextures = staticCompositionLocalOf<Textures?> { null }
 
@@ -130,7 +141,12 @@ private val TILE = 288.dp
  * Skips the 1×1 placeholder some targets (Wasm) return while a resource is
  * still loading, so nothing flashes.
  */
-fun Modifier.tiledTexture(image: ImageBitmap?, tile: Dp, alpha: Float = 1f): Modifier =
+fun Modifier.tiledTexture(
+    image: ImageBitmap?,
+    tile: Dp,
+    alpha: Float = 1f,
+    overlay: Boolean = true,
+): Modifier =
     if (image == null) this
     else this.clipToBounds().drawBehind {
         if (image.width <= 1 || image.height <= 1) return@drawBehind
@@ -146,7 +162,8 @@ fun Modifier.tiledTexture(image: ImageBitmap?, tile: Dp, alpha: Float = 1f): Mod
                     dstSize = dst,
                     // Overlay: mid-grey leaves the tone alone, darker shadows it,
                     // lighter catches the light — grain that follows any tone.
-                    blendMode = BlendMode.Overlay,
+                    // The original v0.1 hides are drawn plain (overlay = false).
+                    blendMode = if (overlay) BlendMode.Overlay else BlendMode.SrcOver,
                     alpha = alpha,
                     filterQuality = FilterQuality.High,
                 )
@@ -172,24 +189,40 @@ private val fieldShade = Brush.verticalGradient(
 /** Leather page: base colour → tiled hide → soft vignette. */
 @Composable
 fun Modifier.leatherSurface(shape: Shape = RectangleShape, tall: Boolean = false): Modifier {
-    val tex = if (LocalSettings.current.value.textures) LocalTextures.current?.leather else null
+    val settings = LocalSettings.current.value
+    val textures = LocalTextures.current
     val pal = LocalPalette.current
+    // Classic hide = the shipped v0.1 bitmap, untinted, exactly as it looked.
+    val original = settings.leather == LeatherTone.CLASSIC
+    val tex = when {
+        !settings.textures -> null
+        original -> textures?.leather
+        else -> textures?.leatherGrain
+    }
     return this
         .clip(shape)
         .background(pal.leatherBase)
-        .tiledTexture(tex, TILE)
+        .tiledTexture(tex, TILE, overlay = !original)
         .background(if (tall) pageSheen else sheetSheen)
 }
 
 /** Paper surface: base colour → tiled paper stock. */
 @Composable
 fun Modifier.paperSurface(shape: Shape = RoundedCornerShape(8.dp)): Modifier {
-    val tex = if (LocalSettings.current.value.textures) LocalTextures.current?.paper else null
+    val settings = LocalSettings.current.value
+    val textures = LocalTextures.current
     val pal = LocalPalette.current
+    // Cream stock = the shipped v0.1 paper bitmap, untinted.
+    val original = settings.paper == PaperTone.CREAM
+    val tex = when {
+        !settings.textures -> null
+        original -> textures?.paper
+        else -> textures?.paperGrain
+    }
     return this
         .clip(shape)
         .background(pal.paperBase)
-        .tiledTexture(tex, TILE)
+        .tiledTexture(tex, TILE, overlay = !original)
 }
 
 /** A field debossed into the leather: paper with a shaded top edge and a hairline. */
@@ -233,9 +266,13 @@ fun Modifier.leatherStrap(): Modifier =
 
 @Composable
 fun SearitchTheme(settings: SettingsState, content: @Composable () -> Unit) {
-    val leather = imageResource(Res.drawable.leather_grain)
-    val paper = imageResource(Res.drawable.paper_grain)
-    val textures = remember(leather, paper) { Textures(leather, paper) }
+    val leather = imageResource(Res.drawable.leather)
+    val paper = imageResource(Res.drawable.paper)
+    val leatherGrain = imageResource(Res.drawable.leather_grain)
+    val paperGrain = imageResource(Res.drawable.paper_grain)
+    val textures = remember(leather, paper, leatherGrain, paperGrain) {
+        Textures(leather, paper, leatherGrain, paperGrain)
+    }
     val palette = settings.palette
     val scheme = remember(palette) {
         darkColorScheme(
