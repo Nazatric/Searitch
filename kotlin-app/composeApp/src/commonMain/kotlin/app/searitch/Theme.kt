@@ -19,8 +19,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.ImageShader
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
@@ -137,54 +139,35 @@ val LocalTextures = staticCompositionLocalOf<Textures?> { null }
 private val TILE = 288.dp
 
 /**
- * Tiles [image] across the bounds, tinted to [tint] by multiplication.
- * Skips the 1×1 placeholder some targets (Wasm) return while a resource is
- * still loading, so nothing flashes.
+ * The hide/paper texture as a GPU-tiled shader brush.
+ *
+ * This used to be a nested `drawImage` loop — for every surface, on every frame:
+ * an 864px bitmap blitted dozens of times with high-quality filtering. With 21
+ * textured surfaces on screen (every card, chip and strap) that was the single
+ * biggest cost in the app, and it is what made scrolling and the settings sheet
+ * stutter.
+ *
+ * A repeated [ImageShader] asks the GPU to tile the bitmap for us: one draw call
+ * per surface, no per-frame filtering, and the texture lands on exact device
+ * pixels (1 texture px = 1 px) so the grain stays crisp instead of blurred.
  */
-fun Modifier.tiledTexture(
-    image: ImageBitmap?,
-    tile: Dp,
-    alpha: Float = 1f,
-    overlay: Boolean = true,
-): Modifier =
-    if (image == null) this
-    else this.clipToBounds().drawBehind {
-        if (image.width <= 1 || image.height <= 1) return@drawBehind
-        val t = tile.toPx().toInt().coerceAtLeast(1)
-        val dst = IntSize(t, t)
-        var y = 0
-        while (y < size.height) {
-            var x = 0
-            while (x < size.width) {
-                drawImage(
-                    image = image,
-                    dstOffset = IntOffset(x, y),
-                    dstSize = dst,
-                    // Overlay: mid-grey leaves the tone alone, darker shadows it,
-                    // lighter catches the light — grain that follows any tone.
-                    // The original v0.1 hides are drawn plain (overlay = false).
-                    blendMode = if (overlay) BlendMode.Overlay else BlendMode.SrcOver,
-                    alpha = alpha,
-                    filterQuality = FilterQuality.High,
-                )
-                x += t
-            }
-            y += t
-        }
+@Composable
+fun rememberTextureBrush(image: ImageBitmap?): ShaderBrush? =
+    remember(image) {
+        image
+            ?.takeIf { it.width > 1 && it.height > 1 }
+            ?.let { ShaderBrush(ImageShader(it, TileMode.Repeated, TileMode.Repeated)) }
     }
 
-private val pageSheen = Brush.verticalGradient(
-    0f to Color(0x1FFFD796),
-    0.5f to Color(0x00000000),
-    1f to Color(0x57000000),
-)
-private val strapSheen = Brush.verticalGradient(listOf(Color(0x2BFFE4B8), Color(0x38000000)))
-private val sheetSheen = Brush.verticalGradient(listOf(Color(0x24FFE4B8), Color(0x38000000)))
-private val fieldShade = Brush.verticalGradient(
-    0f to Color(0x4D6E5530),
-    0.45f to Color(0x00FFFFFF),
-    1f to Color(0x33FFFFFF),
-)
+/** Paints [brush] over the whole surface, optionally as an overlay blend. */
+private fun Modifier.textureOverlay(brush: ShaderBrush?, overlay: Boolean): Modifier =
+    if (brush == null) this
+    else this.drawBehind {
+        drawRect(
+            brush = brush,
+            blendMode = if (overlay) BlendMode.Overlay else BlendMode.SrcOver,
+        )
+    }
 
 /** Leather page: base colour → tiled hide → soft vignette. */
 @Composable
@@ -199,10 +182,11 @@ fun Modifier.leatherSurface(shape: Shape = RectangleShape, tall: Boolean = false
         original -> textures?.leather
         else -> textures?.leatherGrain
     }
+    val brush = rememberTextureBrush(tex)
     return this
         .clip(shape)
         .background(pal.leatherBase)
-        .tiledTexture(tex, TILE, overlay = !original)
+        .textureOverlay(brush, overlay = !original)
         .background(if (tall) pageSheen else sheetSheen)
 }
 
@@ -219,10 +203,11 @@ fun Modifier.paperSurface(shape: Shape = RoundedCornerShape(8.dp)): Modifier {
         original -> textures?.paper
         else -> textures?.paperGrain
     }
+    val brush = rememberTextureBrush(tex)
     return this
         .clip(shape)
         .background(pal.paperBase)
-        .tiledTexture(tex, TILE, overlay = !original)
+        .textureOverlay(brush, overlay = !original)
 }
 
 /** A field debossed into the leather: paper with a shaded top edge and a hairline. */

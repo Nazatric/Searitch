@@ -8,7 +8,7 @@ import android.view.View
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalView
 
 /**
@@ -20,7 +20,8 @@ import androidx.compose.ui.platform.LocalView
 actual fun PlatformSystemBars(darkIcons: Boolean, scrim: Long) {
     val view = LocalView.current
     val activity = view.context.findActivity() ?: return
-    SideEffect {
+    // keyed: window ops only when the materials actually change, never per frame
+    LaunchedEffect(darkIcons, scrim) {
         val window = activity.window
         @Suppress("DEPRECATION")
         window.navigationBarColor = scrim.toInt()

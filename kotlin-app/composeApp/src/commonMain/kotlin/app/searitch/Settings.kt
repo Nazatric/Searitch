@@ -1,6 +1,7 @@
 package app.searitch
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -82,6 +83,7 @@ enum class DownloadQuality(val label: String, val hint: String) {
     LARGE("Large preview", "Caps around 2000px. Smaller, faster saves."),
 }
 
+@Immutable
 @Serializable
 data class AppSettings(
     val barPlacement: BarPlacement = BarPlacement.TOP,
@@ -108,6 +110,7 @@ data class AppSettings(
 val LocalSettings = staticCompositionLocalOf { SettingsState(AppSettings()) }
 
 /** Resolved colours for the current tone selection. */
+@Immutable
 class Palette(
     val leatherDark: Color,
     val leatherBase: Color,

@@ -7,6 +7,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,18 +52,35 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
 /**
- * The gear: a brass medallion that spins a third of a turn and pops when the
- * settings sheet is opened. Pure rotation of a vector cog — no assets.
+ * The settings gear: a struck brass medallion.
+ *
+ * Drawn rather than iconified so it sits in the same material world as the
+ * straps and cards: concentric metal shading, a raised rim, and a stamped cog
+ * with a light catch along its top edge and shadow beneath (an intaglio cut,
+ * not an outline). The cog alone turns when the sheet opens; the medallion
+ * stays put, the way real hardware behaves.
  */
 @Composable
 fun GearButton(onClick: () -> Unit, open: Boolean, modifier: Modifier = Modifier) {
@@ -74,7 +93,7 @@ fun GearButton(onClick: () -> Unit, open: Boolean, modifier: Modifier = Modifier
     val rotation by animateFloatAsState(
         targetValue = if (open) 120f else 0f,
         animationSpec = if (settings.motion) {
-            spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow)
+            spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMediumLow)
         } else {
             tween(0)
         },
@@ -82,29 +101,24 @@ fun GearButton(onClick: () -> Unit, open: Boolean, modifier: Modifier = Modifier
     )
     val scale by animateFloatAsState(
         targetValue = when {
-            pressed -> 0.88f
-            open -> 1.06f
+            pressed -> 0.9f
+            open -> 1.04f
             else -> 1f
         },
         animationSpec = if (settings.motion) {
-            spring(dampingRatio = 0.42f, stiffness = Spring.StiffnessMedium)
+            spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMedium)
         } else {
             tween(0)
         },
         label = "gearScale",
     )
 
-    val shape = RoundedCornerShape(12.dp)
     Box(
         modifier = modifier
             .size(44.dp)
             .scale(scale)
-            .shadow(4.dp, shape)
-            .clip(shape)
-            // solid brass, not a translucent well: the gear is the one control
-            // that is not a filter, so it gets the metal treatment
-            .background(brassBrush(), shape)
-            .border(1.dp, pal.brassDark, shape)
+            .shadow(5.dp, CircleShape)
+            .clip(CircleShape)
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -112,17 +126,122 @@ fun GearButton(onClick: () -> Unit, open: Boolean, modifier: Modifier = Modifier
             ) {
                 haptics.press()
                 onClick()
-            },
+            }
+            .semantics { contentDescription = "Settings" }
+            .drawBehind { drawMedallion(pal) },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            Ico.Gear,
-            pal.brassText,
-            Modifier
-                .size(23.dp)
-                .rotate(rotation)
-                .semantics { contentDescription = "Settings" },
+        Cog(
+            rotation = rotation,
+            top = lerp(pal.brassText, Color.Black, 0.18f),
+            bottom = lerp(pal.brassText, Color.Black, 0.55f),
+            modifier = Modifier.size(25.dp),
         )
+    }
+}
+
+/** The medallion face: turned metal, a rim, and an inner shadow. */
+private fun DrawScope.drawMedallion(pal: Palette) {
+    val r = size.minDimension / 2f
+    // face: light from the top-left, like every other surface in the app
+    drawCircle(
+        brush = Brush.linearGradient(
+            colors = listOf(
+                lerp(pal.brassLight, Color.White, 0.28f),
+                pal.brassLight,
+                pal.brassBase,
+                pal.brassDeep,
+            ),
+            start = Offset(0f, 0f),
+            end = Offset(size.width, size.height),
+        ),
+        radius = r,
+    )
+    // struck rim: bright inner hairline, dark outer edge
+    drawCircle(
+        color = lerp(pal.brassLight, Color.White, 0.5f).copy(alpha = 0.85f),
+        radius = r - 1.2.dp.toPx(),
+        style = Stroke(width = 1.dp.toPx()),
+    )
+    drawCircle(
+        color = lerp(pal.brassDark, Color.Black, 0.35f).copy(alpha = 0.55f),
+        radius = r - 0.5.dp.toPx(),
+        style = Stroke(width = 1.1.dp.toPx()),
+    )
+    // a soft seated shadow so the cog looks pressed into the disc
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.16f)),
+            center = Offset(this.center.x, this.center.y + 1.5.dp.toPx()),
+            radius = r * 0.62f,
+        ),
+        radius = r * 0.62f,
+    )
+}
+
+/**
+ * Just the cog, filled (not outlined) so it survives at 25dp, with a highlight
+ * offset up-left and a shadow down-right — the two-tone edge that makes an
+ * engraving read as cut metal rather than a flat sticker.
+ */
+@Composable
+fun Cog(
+    rotation: Float,
+    top: Color,
+    bottom: Color,
+    modifier: Modifier = Modifier,
+    teeth: Int = 9,
+    highlight: Color = Color.White.copy(alpha = 0.35f),
+    shadowColor: Color = Color.Black.copy(alpha = 0.35f),
+) {
+    Canvas(modifier.rotate(rotation)) {
+        val u = size.minDimension / 24f
+        fun path(dx: Float, dy: Float): Path {
+            val p = Path()
+            val step = 360f / teeth
+            val halfTop = 360f / teeth * 0.24f     // half of the flat crest
+            val halfRoot = 360f / teeth * 0.40f    // half of the root gap
+            val rCrest = 10.6f
+            val rRoot = 7.6f
+            fun at(deg: Float, rr: Float): Offset {
+                val a = deg * PI / 180.0
+                return Offset(
+                    (12f + rr * cos(a)).toFloat() * u + dx,
+                    (12f + rr * sin(a)).toFloat() * u + dy,
+                )
+            }
+            for (i in 0 until teeth) {
+                val base = i * step - 90f
+                val a = at(base - halfTop, rCrest)
+                val b = at(base + halfTop, rCrest)
+                val c = at(base + halfRoot, rRoot)
+                val d = at(base + step - halfRoot, rRoot)
+                if (i == 0) p.moveTo(a.x, a.y) else p.lineTo(a.x, a.y)
+                p.lineTo(b.x, b.y)
+                p.lineTo(c.x, c.y)
+                p.lineTo(d.x, d.y)
+            }
+            p.close()
+            return p
+        }
+
+        val lift = 0.7.dp.toPx()
+        drawPath(path(0f, lift), highlight, style = Fill)          // light catch below
+        drawPath(path(-lift, -lift), shadowColor, style = Fill)     // cut edge above
+        drawPath(
+            path(0f, 0f),
+            Brush.linearGradient(
+                colors = listOf(top, bottom),
+                start = Offset(0f, 0f),
+                end = Offset(size.width, size.height),
+            ),
+            style = Fill,
+        )
+        // hub: a dark well with a bright lip, which reads as a bore without
+        // needing a clear-blend layer for one small hole
+        drawCircle(color = bottom.copy(alpha = 0.55f), radius = 3.2f * u)
+        drawCircle(color = highlight, radius = 3.2f * u, style = Stroke(1f * u))
+        drawCircle(color = shadowColor, radius = 2.3f * u, style = Stroke(1f * u))
     }
 }
 
@@ -276,28 +395,40 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
                 ToggleRow("Keep searched feeds", draft.cacheFeeds) {
                     set(draft.copy(cacheFeeds = it))
                 }
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column {
-                        Text("Stored on this device", color = Ink.body, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            if (cacheBusy) "Measuring…" else "${friendlySize(cacheBytes)} of feeds & photos",
+                            "Stored on this device",
+                            color = Ink.body,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (cacheBusy) "measuring…" else friendlySize(cacheBytes),
                             color = Ink.faint,
                             fontSize = 11.sp,
+                            maxLines = 1,
                         )
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SearitchChip("Refresh", selected = false) {
+                    // full-width row of two equal buttons: no label can be squeezed
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ActionChip(
+                            "Refresh",
+                            Modifier.weight(1f),
+                            enabled = !cacheBusy,
+                        ) {
                             cacheBusy = true
                             scope.launch {
                                 cacheBytes = runCatching { FeedCache.sizeBytes() }.getOrDefault(0L)
                                 cacheBusy = false
                             }
                         }
-                        SearitchChip("Clear", selected = false) {
+                        ActionChip(
+                            "Clear cache",
+                            Modifier.weight(1f),
+                            enabled = !cacheBusy,
+                        ) {
                             cacheBusy = true
                             scope.launch {
                                 runCatching { FeedCache.clearAll() }
@@ -326,6 +457,46 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
 }
 
 /* ───────────────────────────── building blocks ────────────────────────── */
+
+/** A chip that fills its slot, so a long label can never be clipped mid-word. */
+@Composable
+private fun ActionChip(
+    label: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val pal = LocalPalette.current
+    val haptics = rememberHaptics()
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .paperSurface(CircleShape)
+            .border(1.dp, Ink.faint.copy(alpha = if (enabled) 0.3f else 0.15f), CircleShape)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                enabled = enabled,
+            ) {
+                haptics.tap()
+                onClick()
+            }
+            .padding(vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = if (enabled) Ink.soft else Ink.faint.copy(alpha = 0.6f),
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
 
 @Composable
 private fun MaterialPreview() {
@@ -379,16 +550,22 @@ private fun MaterialPreview() {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text("PREVIEW", color = Ink.onLeatherSoft, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-            // a static medallion: same metal as the real gear, not a live control
+            // the real medallion, just not pressable in here
             Box(
                 Modifier
                     .size(44.dp)
-                    .shadow(4.dp, RoundedCornerShape(12.dp))
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(brassBrush(), RoundedCornerShape(12.dp))
-                    .border(1.dp, LocalPalette.current.brassDark, RoundedCornerShape(12.dp)),
+                    .shadow(5.dp, CircleShape)
+                    .clip(CircleShape)
+                    .drawBehind { drawMedallion(LocalPalette.current) },
                 contentAlignment = Alignment.Center,
-            ) { Icon(Ico.Gear, LocalPalette.current.brassText, Modifier.size(23.dp)) }
+            ) {
+                Cog(
+                    rotation = 0f,
+                    top = lerp(LocalPalette.current.brassText, Color.Black, 0.18f),
+                    bottom = lerp(LocalPalette.current.brassText, Color.Black, 0.55f),
+                    modifier = Modifier.size(25.dp),
+                )
+            }
         }
     }
 }

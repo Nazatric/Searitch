@@ -1,8 +1,10 @@
 package app.searitch
 
+import androidx.compose.runtime.Immutable
 import kotlinx.serialization.Serializable
 
 /** One normalized image result, regardless of which source it came from. */
+@Immutable
 @Serializable
 data class SearitchImage(
     val id: String,
@@ -63,6 +65,7 @@ val COLOR_OPTIONS = listOf(
     ColorOption("gray", "Gray", 0xFF95A5A6, "999999"),
 )
 
+@Immutable
 @Serializable
 data class Filters(
     val type: TypeFilter = TypeFilter.ANY,

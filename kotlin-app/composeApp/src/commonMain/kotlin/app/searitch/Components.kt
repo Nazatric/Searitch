@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -170,6 +171,10 @@ fun SearitchChip(text: String, selected: Boolean, onClick: () -> Unit) {
             color = if (selected) pal.brassText else Ink.soft,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
+            // a chip is a single label; wrapping it breaks the ring shape
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -269,6 +274,8 @@ fun PhotoCard(img: SearitchImage, index: Int, onClick: (SearitchImage) -> Unit) 
                 model = img.thumb,
                 contentDescription = img.title,
                 contentScale = ContentScale.Crop,
+                // decoding at card size (not full source size) keeps scrolling at
+                // 120Hz: no multi-megapixel downscales on the main thread
                 modifier = Modifier.fillMaxWidth().aspectRatio(cardRatio(img)),
             )
         }
