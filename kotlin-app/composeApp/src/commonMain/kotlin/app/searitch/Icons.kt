@@ -8,6 +8,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -39,12 +40,17 @@ fun Icon(kind: Ico, tint: Color, modifier: Modifier = Modifier.size(22.dp)) {
                 line(16f, 16f, 20.5f, 20.5f)
             }
             Ico.Filter -> {
-                line(4f, 7f, 14f, 7f)
-                line(18f, 7f, 20f, 7f)
-                line(4f, 17f, 6f, 17f)
-                line(10f, 17f, 20f, 17f)
-                drawCircle(tint, 2f * u, p(16f, 7f), style = stroke)
-                drawCircle(tint, 2f * u, p(8f, 17f), style = stroke)
+                // funnel: wide rim tapering to a short stem
+                val funnel = Path().apply {
+                    moveTo(3.8f * u, 5f * u)
+                    lineTo(20.2f * u, 5f * u)
+                    lineTo(13.6f * u, 13.2f * u)
+                    lineTo(13.6f * u, 19.4f * u)
+                    lineTo(10.4f * u, 21f * u)
+                    lineTo(10.4f * u, 13.2f * u)
+                    close()
+                }
+                drawPath(funnel, tint, style = stroke)
             }
             Ico.Close -> {
                 line(6f, 6f, 18f, 18f)
@@ -87,14 +93,40 @@ fun Icon(kind: Ico, tint: Color, modifier: Modifier = Modifier.size(22.dp)) {
                 line(4f, 5f, 12f, 2f)
             }
             Ico.Gear -> {
-                // hub + eight teeth, so it reads as a cog at 20dp
-                drawCircle(tint, 3.4f * u, p(12f, 12f), style = stroke)
-                for (i in 0 until 8) {
-                    val a = i * (PI / 4.0)
-                    val c = cos(a).toFloat()
-                    val s2 = sin(a).toFloat()
-                    line(12f + c * 6.4f, 12f + s2 * 6.4f, 12f + c * 9.7f, 12f + s2 * 9.7f)
+                /*
+                 * A real cog: eight trapezoidal teeth traced as one closed
+                 * outline (outer flat top, then a step down to the root circle).
+                 * A hub circle + radial spikes — the obvious shortcut — reads as
+                 * a torch/sun at 20dp, so it is drawn as a path instead.
+                 */
+                val teeth = 8
+                val step = 360f / teeth      // 45°
+                val toothHalf = 12f          // half the flat top
+                val rootStart = 15f          // tooth flank ends here
+                val rootEnd = 33f            // root arc ends where the next tooth starts
+                val rOuter = 10.4f
+                val rRoot = 7.3f
+
+                fun at(deg: Float, r: Float): Offset {
+                    val a = deg * PI / 180.0
+                    return p(12f + (r * cos(a)).toFloat(), 12f + (r * sin(a)).toFloat())
                 }
+
+                val cog = Path()
+                for (i in 0 until teeth) {
+                    val base = i * step - 90f
+                    val a1 = at(base - toothHalf, rOuter)
+                    val a2 = at(base + toothHalf, rOuter)
+                    val a3 = at(base + rootStart, rRoot)
+                    val a4 = at(base + rootEnd, rRoot)
+                    if (i == 0) cog.moveTo(a1.x, a1.y) else cog.lineTo(a1.x, a1.y)
+                    cog.lineTo(a2.x, a2.y)
+                    cog.lineTo(a3.x, a3.y)
+                    cog.lineTo(a4.x, a4.y)
+                }
+                cog.close()
+                drawPath(cog, tint, style = stroke)
+                drawCircle(tint, 3.2f * u, p(12f, 12f), style = stroke)
             }
             Ico.Refresh -> {
                 drawCircle(tint, 6.6f * u, p(12f, 12f), style = stroke)

@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 
 /** Minimal landing screen: a cream wordmark pressed into the hide, and one search field. */
 @Composable
@@ -78,17 +79,6 @@ fun HomeScreen(
     }
 
     Box(Modifier.fillMaxSize().leatherSurface(tall = true)) {
-        /* gear always sits in the top corner, whatever the sheet is doing */
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(start = 14.dp, end = 14.dp, top = 10.dp),
-            horizontalArrangement = Arrangement.End,
-        ) {
-            GearButton(onClick = { haptics.press(); onOpenSettings() }, open = settingsOpen)
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -218,6 +208,21 @@ fun HomeScreen(
                     }
                 }
             }
+        }
+
+        /*
+         * Declared *after* the full-size column and lifted with zIndex: a
+         * fillMaxSize scroll container drawn later swallows the taps, which is
+         * exactly why the gear felt dead on this screen.
+         */
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .zIndex(2f)
+                .statusBarsPadding()
+                .padding(end = 14.dp, top = 10.dp),
+        ) {
+            GearButton(onClick = onOpenSettings, open = settingsOpen)
         }
     }
 }

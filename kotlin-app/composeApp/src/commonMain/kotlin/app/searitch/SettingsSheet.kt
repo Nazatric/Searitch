@@ -48,6 +48,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
@@ -91,21 +93,35 @@ fun GearButton(onClick: () -> Unit, open: Boolean, modifier: Modifier = Modifier
         label = "gearScale",
     )
 
+    val shape = RoundedCornerShape(12.dp)
     Box(
         modifier = modifier
             .size(44.dp)
             .scale(scale)
-            .shadow(3.dp, RoundedCornerShape(12.dp))
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0x66160B04), RoundedCornerShape(12.dp))
-            .border(1.dp, pal.brassDark.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
-            .clickable(interactionSource = interaction, indication = null) {
-                haptics.tap()
+            .shadow(4.dp, shape)
+            .clip(shape)
+            // solid brass, not a translucent well: the gear is the one control
+            // that is not a filter, so it gets the metal treatment
+            .background(brassBrush(), shape)
+            .border(1.dp, pal.brassDark, shape)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClickLabel = "Settings",
+            ) {
+                haptics.press()
                 onClick()
             },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Ico.Gear, pal.thread, Modifier.size(22.dp).rotate(rotation))
+        Icon(
+            Ico.Gear,
+            pal.brassText,
+            Modifier
+                .size(23.dp)
+                .rotate(rotation)
+                .semantics { contentDescription = "Settings" },
+        )
     }
 }
 
