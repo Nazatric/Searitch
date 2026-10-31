@@ -37,6 +37,8 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
 
       - name: Unpack app source from repository zip
         run: |
@@ -45,6 +47,18 @@ jobs:
           unzip -qo "$ZIP_NAME" -d build-src
           chmod +x "$APP_DIR/gradlew"
           ls -la "$APP_DIR"
+
+      # The zip ships gradlew/gradle-wrapper.properties but no wrapper jar.
+      # Regenerate the jar so the project's own wrapper settings are used.
+      - name: Restore Gradle wrapper jar
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          set -euo pipefail
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            grep -q 'distributionUrl' gradle/wrapper/gradle-wrapper.properties
+            gradle wrapper --gradle-version 8.11.1 --no-configuration-cache
+          fi
+          ls -l gradle/wrapper/
 
       - name: Ensure Android SDK components
         run: |
