@@ -60,6 +60,18 @@ jobs:
           fi
           ls -l gradle/wrapper/
 
+      # The zip imports `cinzel_bold`, `leather` and `paper` from Compose
+      # resources but ships no composeResources/ tree. Those exact assets are
+      # embedded in the web app's generated stylesheet, so recover them there
+      # instead of touching any zipped source file.
+      - name: Restore missing Compose resources
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet fonttools brotli pillow
+          python3 "${{ github.workspace }}/scripts/ci/prepare-compose-resources.py" \
+            --css "${{ github.workspace }}/build-src/src/app/textures.css" \
+            --resources "${{ env.APP_DIR }}/composeApp/src/commonMain/composeResources"
+
       - name: Ensure Android SDK components
         run: |
           set -euo pipefail
