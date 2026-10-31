@@ -1,3 +1,22 @@
+## v0.11 — 1 Nov 2026
+
+`versionCode 11` · `versionName 1.7.1`
+
+**The hero actually finishes.** The detail view read the image library's load
+state once, when the screen opened, and never again — the state is a stream, not a
+value, so it always read "loading". The `FINISHING` tag therefore never cleared
+and the sharp image never faded in, even though the full-size file had already
+been fetched and cached. (That is why Download gave you the original instantly
+while the screen was still "finishing".) The state is now subscribed to, so the
+tag clears and the sharp version appears as soon as the decode lands.
+
+**A failure says so.** If the full-size file really can't be fetched, the tag
+becomes `TAP TO RETRY` and issues a fresh request instead of replaying the cached
+failure. The tag also waits 400 ms before appearing, so cached images open
+straight to sharp with no flashing.
+
+---
+
 ## v0.10 — 1 Nov 2026
 
 `versionCode 10` · `versionName 1.7.0`
