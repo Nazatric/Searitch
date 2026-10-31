@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -61,6 +62,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -290,192 +292,218 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
         containerColor = Color.Transparent,
         scrimColor = Color(0x99000000),
         tonalElevation = 0.dp,
-        dragHandle = {
-            Box(
-                Modifier
-                    .padding(vertical = 10.dp)
-                    .size(width = 44.dp, height = 5.dp)
-                    .clip(CircleShape)
-                    .background(Ink.onLeather.copy(alpha = 0.45f)),
-            )
-        },
+        // square top edge: the strap is a page, not a floating card
+        shape = RectangleShape,
+        // The sheet owns its top edge: no floating grab pill over a flat gutter.
+        // Its header is a real leather strap that runs up *behind* the status bar,
+        // so the clock and battery sit on the same hide, sheen and stitching as
+        // the home screen instead of hovering over bare window.
+        dragHandle = null,
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
     ) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .leatherSurface(tall = true)
-                .statusBarsPadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .padding(top = 4.dp, bottom = 24.dp + navPad),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .fillMaxHeight()
+                .leatherSurface(tall = true),
         ) {
-            /* ── heading ── */
-            Row(
-                Modifier.fillMaxWidth().padding(bottom = 2.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+            /* ── strap: fixed, runs full-bleed under the status bar ── */
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .leatherStrap()
+                    .statusBarsPadding()
+                    .padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Column {
-                    Text(
-                        "SETTINGS",
-                        style = TextStyle(
-                            color = Ink.onLeather,
-                            fontFamily = cinzel(),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            letterSpacing = 3.sp,
-                        ),
-                    )
-                    Text(
-                        "Make it yours",
-                        color = Ink.onLeatherSoft,
-                        fontSize = 11.sp,
-                        letterSpacing = 1.5.sp,
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SearitchChip("Defaults", selected = false) { update(AppSettings()) }
-                    SearitchChip("Done", selected = true) { close() }
-                }
-            }
-
-            // A live sample: the chosen hide, stock and metal rendered exactly as
-            // the app paints them, so a tone is judged on the real thing.
-            MaterialPreview()
-
-            Card("HOME SCREEN") {
-                PositionSlider(
-                    value = draft.homeBar,
-                    onChange = { update(draft.copy(homeBar = it)) },
+                Box(
+                    Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(bottom = 6.dp)
+                        .size(width = 40.dp, height = 4.dp)
+                        .clip(CircleShape)
+                        .background(Ink.onLeather.copy(alpha = 0.40f)),
                 )
-                Hint("Where the search bar sits on the landing screen.")
-            }
-
-            Card("SEARCH FIELD") {
-                OptionRow(
-                    "Where the field sits",
-                    BarPlacement.entries,
-                    draft.barPlacement,
-                    { it.label },
-                ) { update(draft.copy(barPlacement = it)) }
-                Hint("Bottom dock keeps the field under your thumb while you scroll.")
-            }
-
-            Card("GALLERY") {
-                OptionRow("Card density", GridDensity.entries, draft.gridDensity, { it.label }) {
-                    update(draft.copy(gridDensity = it))
-                }
-                OptionRow("Card style", CardStyle.entries, draft.cardStyle, { it.label }) {
-                    update(draft.copy(cardStyle = it))
-                }
-                ToggleRow("Similar images under a photo", draft.related) {
-                    update(draft.copy(related = it))
-                }
-            }
-
-            Card("MATERIALS") {
-                ToneRow("Leather", draft.leather, LeatherTone.entries, { it.label }, { it.base }) {
-                    update(draft.copy(leather = it))
-                }
-                ToneRow("Paper", draft.paper, PaperTone.entries, { it.label }, { it.base }) {
-                    update(draft.copy(paper = it))
-                }
-                ToneRow("Metal", draft.brass, BrassTone.entries, { it.label }, { it.base }) {
-                    update(draft.copy(brass = it))
-                }
-                ToggleRow("Real hide & paper textures", draft.textures) {
-                    update(draft.copy(textures = it))
-                }
-                Hint("Turning textures off saves memory on older phones.")
-            }
-
-            Card("MOTION & FEEL") {
-                ToggleRow("Animations", draft.motion) { update(draft.copy(motion = it)) }
-                ToggleRow("Haptics", draft.haptics) { update(draft.copy(haptics = it)) }
-            }
-
-            Card("DOWNLOADS") {
-                OptionRow(
-                    "What Download saves",
-                    DownloadQuality.entries,
-                    draft.downloadQuality,
-                    { it.label },
-                ) { update(draft.copy(downloadQuality = it)) }
-                Hint(draft.downloadQuality.hint + " Saved to Download/Searitch.")
-            }
-
-            Card("SEARCH DEFAULTS") {
-                ToggleRow("Safe search on by default", draft.defaultSafe) {
-                    update(draft.copy(defaultSafe = it))
-                }
-                ToggleRow("Block AI images by default", draft.defaultAntiAi) {
-                    update(draft.copy(defaultAntiAi = it))
-                }
-                Hint("Applies to new searches. Filter chips in the field still override per search.")
-            }
-
-            Card("CACHE") {
-                ToggleRow("Keep searched feeds", draft.cacheFeeds) {
-                    update(draft.copy(cacheFeeds = it))
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column {
                         Text(
-                            "Stored on this device",
-                            color = Ink.body,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            "SETTINGS",
+                            style = TextStyle(
+                                color = Ink.onLeather,
+                                fontFamily = cinzel(),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                letterSpacing = 3.sp,
+                            ),
                         )
-                        Spacer(Modifier.width(8.dp))
                         Text(
-                            if (cacheBusy) "measuring…" else friendlySize(cacheBytes),
-                            color = Ink.faint,
+                            "Make it yours",
+                            color = Ink.onLeatherSoft,
                             fontSize = 11.sp,
-                            maxLines = 1,
+                            letterSpacing = 1.5.sp,
                         )
                     }
-                    // full-width row of two equal buttons: no label can be squeezed
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ActionChip(
-                            "Refresh",
-                            Modifier.weight(1f),
-                            enabled = !cacheBusy,
-                        ) {
-                            cacheBusy = true
-                            scope.launch {
-                                cacheBytes = runCatching { FeedCache.sizeBytes() }.getOrDefault(0L)
-                                cacheBusy = false
-                            }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SearitchChip("Defaults", selected = false) { update(AppSettings()) }
+                        SearitchChip("Done", selected = true) { close() }
+                    }
+                }
+            }
+
+            /* ── page: the cards scroll, the strap stays put ── */
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(top = 12.dp)
+                    .padding(bottom = 24.dp + navPad),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                // A live sample: the chosen hide, stock and metal rendered exactly as
+                // the app paints them, so a tone is judged on the real thing.
+                MaterialPreview(Modifier.padding(horizontal = 16.dp))
+
+                Card("HOME SCREEN") {
+                    PositionSlider(
+                        value = draft.homeBar,
+                        onChange = { update(draft.copy(homeBar = it)) },
+                    )
+                    Hint("Where the search bar sits on the landing screen.")
+                }
+
+                Card("SEARCH FIELD") {
+                    OptionRow(
+                        "Where the field sits",
+                        BarPlacement.entries,
+                        draft.barPlacement,
+                        { it.label },
+                    ) { update(draft.copy(barPlacement = it)) }
+                    Hint("Bottom dock keeps the field under your thumb while you scroll.")
+                }
+
+                Card("GALLERY") {
+                    OptionRow("Card density", GridDensity.entries, draft.gridDensity, { it.label }) {
+                        update(draft.copy(gridDensity = it))
+                    }
+                    OptionRow("Card style", CardStyle.entries, draft.cardStyle, { it.label }) {
+                        update(draft.copy(cardStyle = it))
+                    }
+                    ToggleRow("Similar images under a photo", draft.related) {
+                        update(draft.copy(related = it))
+                    }
+                }
+
+                Card("MATERIALS") {
+                    ToneRow("Leather", draft.leather, LeatherTone.entries, { it.label }, { it.base }) {
+                        update(draft.copy(leather = it))
+                    }
+                    ToneRow("Paper", draft.paper, PaperTone.entries, { it.label }, { it.base }) {
+                        update(draft.copy(paper = it))
+                    }
+                    ToneRow("Metal", draft.brass, BrassTone.entries, { it.label }, { it.base }) {
+                        update(draft.copy(brass = it))
+                    }
+                    ToggleRow("Real hide & paper textures", draft.textures) {
+                        update(draft.copy(textures = it))
+                    }
+                    Hint("Turning textures off saves memory on older phones.")
+                }
+
+                Card("MOTION & FEEL") {
+                    ToggleRow("Animations", draft.motion) { update(draft.copy(motion = it)) }
+                    ToggleRow("Haptics", draft.haptics) { update(draft.copy(haptics = it)) }
+                }
+
+                Card("DOWNLOADS") {
+                    OptionRow(
+                        "What Download saves",
+                        DownloadQuality.entries,
+                        draft.downloadQuality,
+                        { it.label },
+                    ) { update(draft.copy(downloadQuality = it)) }
+                    Hint(draft.downloadQuality.hint + " Saved to Download/Searitch.")
+                }
+
+                Card("SEARCH DEFAULTS") {
+                    ToggleRow("Safe search on by default", draft.defaultSafe) {
+                        update(draft.copy(defaultSafe = it))
+                    }
+                    ToggleRow("Block AI images by default", draft.defaultAntiAi) {
+                        update(draft.copy(defaultAntiAi = it))
+                    }
+                    Hint("Applies to new searches. Filter chips in the field still override per search.")
+                }
+
+                Card("CACHE") {
+                    ToggleRow("Keep searched feeds", draft.cacheFeeds) {
+                        update(draft.copy(cacheFeeds = it))
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Stored on this device",
+                                color = Ink.body,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (cacheBusy) "measuring…" else friendlySize(cacheBytes),
+                                color = Ink.faint,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                            )
                         }
-                        ActionChip(
-                            "Clear cache",
-                            Modifier.weight(1f),
-                            enabled = !cacheBusy,
-                        ) {
-                            cacheBusy = true
-                            scope.launch {
-                                runCatching { FeedCache.clearAll() }
-                                cacheBytes = runCatching { FeedCache.sizeBytes() }.getOrDefault(0L)
-                                cacheBusy = false
+                        // full-width row of two equal buttons: no label can be squeezed
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ActionChip(
+                                "Refresh",
+                                Modifier.weight(1f),
+                                enabled = !cacheBusy,
+                            ) {
+                                cacheBusy = true
+                                scope.launch {
+                                    cacheBytes = runCatching { FeedCache.sizeBytes() }.getOrDefault(0L)
+                                    cacheBusy = false
+                                }
+                            }
+                            ActionChip(
+                                "Clear cache",
+                                Modifier.weight(1f),
+                                enabled = !cacheBusy,
+                            ) {
+                                cacheBusy = true
+                                scope.launch {
+                                    runCatching { FeedCache.clearAll() }
+                                    cacheBytes = runCatching { FeedCache.sizeBytes() }.getOrDefault(0L)
+                                    cacheBusy = false
+                                }
                             }
                         }
                     }
+                    Hint("Photos stay cached while you browse, so returning to a search is instant.")
                 }
-                Hint("Photos stay cached while you browse, so returning to a search is instant.")
-            }
 
-            Text(
-                "SEARITCH · VERSION 1.1",
-                style = TextStyle(
-                    color = Ink.onLeatherSoft.copy(alpha = 0.8f),
-                    fontFamily = cinzel(),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 10.sp,
-                    letterSpacing = 2.5.sp,
-                ),
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 4.dp),
-            )
+                Text(
+                    "SEARITCH · VERSION 1.5",
+                    style = TextStyle(
+                        color = Ink.onLeatherSoft.copy(alpha = 0.8f),
+                        fontFamily = cinzel(),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp,
+                        letterSpacing = 2.5.sp,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(top = 6.dp, bottom = 4.dp),
+                )
+            }
         }
     }
 }
@@ -600,10 +628,10 @@ private fun ActionChip(
 }
 
 @Composable
-private fun MaterialPreview() {
+private fun MaterialPreview(modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(10.dp)
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .shadow(6.dp, shape)
             .leatherStrap()
@@ -674,7 +702,13 @@ private fun MaterialPreview() {
 
 @Composable
 private fun Card(title: String, content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxWidth().paperSurface(RoundedCornerShape(8.dp)).padding(14.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .paperSurface(RoundedCornerShape(8.dp))
+            .padding(14.dp),
+    ) {
         Text(
             title,
             style = TextStyle(

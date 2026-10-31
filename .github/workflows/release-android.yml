@@ -6,9 +6,10 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v0.7"
+        default: "v0.8"
   push:
     branches:
+      - "arena/89730b10-searitch"
       - "arena/1b4ed963-searitch"
     paths:
       - "kotlin-app/**"
@@ -16,7 +17,6 @@ on:
 
 permissions:
   contents: write
-  issues: write
 
 env:
   APP_DIR: ${{ github.workspace }}/kotlin-app
@@ -46,17 +46,14 @@ jobs:
 
       - name: Publish web diagnostics on failure
         if: failure()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           LOG="$GITHUB_WORKSPACE/web.log"
           {
-            echo "Web target failed: $GITHUB_RUN_ID ($GITHUB_SHA)"
+            echo "## Web target failed — run $GITHUB_RUN_ID"
             echo '```'
             [ -f "$LOG" ] && grep -E "^e: |^w: |Unresolved|Type mismatch|error:" "$LOG" | head -120 || echo "no log"
             echo '```'
-          } > web-diag.md
-          gh issue create --title "Web build diagnostics $GITHUB_RUN_ID" --body-file web-diag.md || true
+          } >> "$GITHUB_STEP_SUMMARY"
 
   build:
     name: Build arm64-v8a + armeabi-v7a APKs
@@ -131,15 +128,16 @@ jobs:
           echo "=== outputs ==="
           find composeApp/build/outputs/apk -type f -name "*.apk" -exec ls -lh {} \;
 
+      # Failures are reported where the build lives — the Actions run itself —
+      # never by opening issues on the repository. The Issues tab is for people
+      # with problems, not for CI exhaust.
       - name: Publish diagnostics on failure
         if: failure()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           LOG="$GITHUB_WORKSPACE/build.log"
           [ -f "$LOG" ] || { echo "no build.log captured" > "$GITHUB_WORKSPACE/fail.txt"; LOG="$GITHUB_WORKSPACE/fail.txt"; }
           {
-            echo "Run: $GITHUB_RUN_ID ($GITHUB_SHA)"
+            echo "## Build failed — run $GITHUB_RUN_ID"
             echo
             echo "### Kotlin diagnostics"
             echo '```'
@@ -150,27 +148,37 @@ jobs:
             echo '```'
             tail -40 "$LOG"
             echo '```'
-          } > diag.md
-          gh issue create --title "CI diagnostics $GITHUB_RUN_ID" --body-file diag.md || true
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=Build failed::See the job summary for Kotlin diagnostics (run $GITHUB_RUN_ID)."
 
       - name: Sign APKs and verify them
         run: |
           set -euo pipefail
           BT="$ANDROID_HOME/build-tools/35.0.0"
           mkdir -p out
-          keytool -genkeypair -v \
-            -keystore out/searitch-release.keystore \
-            -storepass searitch2026 -keypass searitch2026 \
-            -alias searitch -keyalg RSA -keysize 2048 -validity 10950 \
-            -dname "CN=Searitch, OU=Searitch, O=Searitch, L=Unknown, S=Unknown, C=IN" > /dev/null 2>&1
+          # Signing key: the one committed to the repo, so every release keeps the
+          # same certificate and installs *over* the previous version. Regenerating
+          # a key per build is what made Android refuse upgrades.
+          KS="$GITHUB_WORKSPACE/kotlin-app/keystore/searitch-release.keystore"
+          if [ -f "$KS" ] && keytool -list -keystore "$KS" -storepass searitch2026 -alias searitch > /dev/null 2>&1; then
+            cp "$KS" out/searitch-release.keystore
+            echo "signing key: committed keystore (stable identity)"
+          else
+            echo "signing key: committed keystore unreadable, generating a throwaway key"
+            keytool -genkeypair -v \
+              -keystore out/searitch-release.keystore \
+              -storepass searitch2026 -keypass searitch2026 \
+              -alias searitch -keyalg RSA -keysize 2048 -validity 10950 \
+              -dname "CN=Searitch, OU=Searitch, O=Searitch, L=Unknown, S=Unknown, C=IN" > /dev/null 2>&1
+          fi
 
           : > out/verify.md
           for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk" | sort); do
             base=$(basename "$apk")
             case "$base" in
-              *arm64*)   name="Searitch-v0.7-arm64-v8a.apk" ;;
-              *armeabi*) name="Searitch-v0.7-armeabi-v7a.apk" ;;
-              *)         name="Searitch-v0.7-$base" ;;
+              *arm64*)   name="Searitch-v0.8-arm64-v8a.apk" ;;
+              *armeabi*) name="Searitch-v0.8-armeabi-v7a.apk" ;;
+              *)         name="Searitch-v0.8-$base" ;;
             esac
             echo "--- $base -> $name"
 
@@ -179,6 +187,7 @@ jobs:
 
             "$BT/zipalign" -f -p 4 "$apk" "out/aligned-$base"
             "$BT/apksigner" sign --ks out/searitch-release.keystore \
+              --ks-type PKCS12 \
               --ks-pass pass:searitch2026 --key-pass pass:searitch2026 \
               --ks-key-alias searitch --out "out/$name" "out/aligned-$base"
             "$BT/apksigner" verify --verbose --print-certs "out/$name" > "out/sig-$base.txt" 2>&1
@@ -221,36 +230,28 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || 'v0.7' }}
+          TAG: ${{ github.event.inputs.tag || 'v0.8' }}
         run: |
           set -euo pipefail
           cat > notes.md <<'EOF'
-          ### v0.7 — the hide is back, and the landing bar moves
+          ### v0.8 — the status bar belongs to the hide
 
-          `versionCode 7` · `versionName 1.4.0`
+          `versionCode 8` · `versionName 1.5.0`
 
-          **Settings sits on the hide again**
+          **Settings has a real top edge**
 
-          The sheet was painted with a flat fill while the cards on it had texture, which is why it looked like a different app. It uses the same leather surface as the home screen now — same hide, same sheen, same tiling — with the status-bar inset respected so the title never collides with the clock.
-
-          **Switches are paper and brass, not black**
-
-          The toggle had become a dark leather channel and read as a black pill dropped into the card. It is a debossed paper trough with a brass knob again: the same field as the search bar, the same metal as every other control.
-
-          **The landing screen search bar can move**
-
-          New in Settings → Home screen: a brass slider with three detents — Top, Middle, Bottom. It moves the wordmark and field together, so the page stays balanced wherever you put it.
-
-          **Icon**
-
-          The magnifier image you sent, used as-is. No regeneration, no recolouring — cut to every density for the legacy square and round icons, plus a full-bleed adaptive icon for Android 8+.
+          The clock and battery were floating over bare window at the top of the
+          sheet, which is why they looked borrowed from another app. Settings now
+          opens on a leather strap — same hide, same sheen, same saddle stitching
+          as the search bar — that runs up behind the status bar. The page meets
+          the top of the screen square, with no grab pill over a flat gutter.
 
           ### Assets
 
           | File | For |
           | --- | --- |
-          | `Searitch-v0.7-arm64-v8a.apk` | almost every phone since 2017 |
-          | `Searitch-v0.7-armeabi-v7a.apk` | older 32-bit devices |
+          | `Searitch-v0.8-arm64-v8a.apk` | almost every phone since 2017 |
+          | `Searitch-v0.8-armeabi-v7a.apk` | older 32-bit devices |
           | `searitch-release.keystore` | signing key — password `searitch2026`, alias `searitch` |
           | `SHA256SUMS.txt` | checksums |
           EOF
@@ -260,7 +261,7 @@ jobs:
             --title "Searitch $TAG" \
             --notes-file notes.md \
             --target "$GITHUB_SHA" \
-            out/Searitch-v0.7-arm64-v8a.apk \
-            out/Searitch-v0.7-armeabi-v7a.apk \
+            out/Searitch-v0.8-arm64-v8a.apk \
+            out/Searitch-v0.8-armeabi-v7a.apk \
             out/searitch-release.keystore \
             out/SHA256SUMS.txt
