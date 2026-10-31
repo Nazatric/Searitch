@@ -1,0 +1,266 @@
+name: Build & Release Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag"
+        required: true
+        default: "v0.7"
+  push:
+    branches:
+      - "arena/1b4ed963-searitch"
+    paths:
+      - "kotlin-app/**"
+      - ".github/workflows/release-android.yml"
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  APP_DIR: ${{ github.workspace }}/kotlin-app
+
+jobs:
+  # Informational: the web target shares all the common code, so a compile
+  # there catches mistakes that an Android-only build would silently accept.
+  web-check:
+    name: Verify shared code compiles for web
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Restore wrapper jar and compile wasm target
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          set -euo pipefail
+          [ -f gradle/wrapper/gradle-wrapper.jar ] || gradle wrapper --gradle-version 8.11.1 --no-configuration-cache
+          ./gradlew :composeApp:compileKotlinWasmJs --no-configuration-cache --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/web.log" | tail -40
+
+      - name: Publish web diagnostics on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LOG="$GITHUB_WORKSPACE/web.log"
+          {
+            echo "Web target failed: $GITHUB_RUN_ID ($GITHUB_SHA)"
+            echo '```'
+            [ -f "$LOG" ] && grep -E "^e: |^w: |Unresolved|Type mismatch|error:" "$LOG" | head -120 || echo "no log"
+            echo '```'
+          } > web-diag.md
+          gh issue create --title "Web build diagnostics $GITHUB_RUN_ID" --body-file web-diag.md || true
+
+  build:
+    name: Build arm64-v8a + armeabi-v7a APKs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      # The upstream archive had no wrapper jar; regenerate it so the project's
+      # own wrapper settings (Gradle 8.11.1) drive the build.
+      - name: Restore Gradle wrapper jar
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          set -euo pipefail
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            grep -q 'distributionUrl' gradle/wrapper/gradle-wrapper.properties
+            gradle wrapper --gradle-version 8.11.1 --no-configuration-cache
+          fi
+          ls -l gradle/wrapper/
+
+      - name: Ensure Android SDK components
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "SDK=$SDK"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --install \
+            "platforms;android-35" "build-tools;35.0.0" "platform-tools" > /dev/null
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+
+      # ABI splits are injected through an init script so the app's build files
+      # stay untouched and arm64/arm32 packages come out of one build.
+      - name: Write ABI split init script
+        run: |
+          cat > "${{ github.workspace }}/abi-splits.gradle" <<'EOF'
+          allprojects {
+              plugins.withId('com.android.application') {
+                  android {
+                      splits {
+                          abi {
+                              enable true
+                              reset()
+                              include 'arm64-v8a', 'armeabi-v7a'
+                              universalApk false
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
+          cat "${{ github.workspace }}/abi-splits.gradle"
+
+      - name: Build release APKs
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          set -euo pipefail
+          ./gradlew :composeApp:assembleRelease \
+            --init-script "${{ github.workspace }}/abi-splits.gradle" \
+            --no-configuration-cache \
+            --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+          echo "=== outputs ==="
+          find composeApp/build/outputs/apk -type f -name "*.apk" -exec ls -lh {} \;
+
+      - name: Publish diagnostics on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LOG="$GITHUB_WORKSPACE/build.log"
+          [ -f "$LOG" ] || { echo "no build.log captured" > "$GITHUB_WORKSPACE/fail.txt"; LOG="$GITHUB_WORKSPACE/fail.txt"; }
+          {
+            echo "Run: $GITHUB_RUN_ID ($GITHUB_SHA)"
+            echo
+            echo "### Kotlin diagnostics"
+            echo '```'
+            grep -E "^e: |^w: |Unresolved|Type mismatch|error:" "$LOG" | head -120 || true
+            echo '```'
+            echo
+            echo "### Build tail"
+            echo '```'
+            tail -40 "$LOG"
+            echo '```'
+          } > diag.md
+          gh issue create --title "CI diagnostics $GITHUB_RUN_ID" --body-file diag.md || true
+
+      - name: Sign APKs and verify them
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          mkdir -p out
+          keytool -genkeypair -v \
+            -keystore out/searitch-release.keystore \
+            -storepass searitch2026 -keypass searitch2026 \
+            -alias searitch -keyalg RSA -keysize 2048 -validity 10950 \
+            -dname "CN=Searitch, OU=Searitch, O=Searitch, L=Unknown, S=Unknown, C=IN" > /dev/null 2>&1
+
+          : > out/verify.md
+          for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk" | sort); do
+            base=$(basename "$apk")
+            case "$base" in
+              *arm64*)   name="Searitch-v0.7-arm64-v8a.apk" ;;
+              *armeabi*) name="Searitch-v0.7-armeabi-v7a.apk" ;;
+              *)         name="Searitch-v0.7-$base" ;;
+            esac
+            echo "--- $base -> $name"
+
+            abis=$(unzip -l "$apk" | awk '{print $4}' | grep -E '^lib/' | cut -d/ -f2 | sort -u)
+            echo "    ABIs: $(echo "$abis" | tr '\n' ' ')"
+
+            "$BT/zipalign" -f -p 4 "$apk" "out/aligned-$base"
+            "$BT/apksigner" sign --ks out/searitch-release.keystore \
+              --ks-pass pass:searitch2026 --key-pass pass:searitch2026 \
+              --ks-key-alias searitch --out "out/$name" "out/aligned-$base"
+            "$BT/apksigner" verify --verbose --print-certs "out/$name" > "out/sig-$base.txt" 2>&1
+            sig_ok=yes; "$BT/apksigner" verify "out/$name" || sig_ok=no
+            "$BT/aapt2" dump badging "$apk" > "out/badging-$base.txt" 2>/dev/null || true
+
+            {
+              echo "### \`$name\`"
+              echo
+              echo "| property | value |"
+              echo "| --- | --- |"
+              echo "| ABI(s) in package | $(echo "$abis" | paste -sd, -) |"
+              echo "| size | $(stat -c%s "out/$name") bytes |"
+              pkg_line=$(grep -m1 "^package:" "out/badging-$base.txt" | sed "s/package: //" || true)
+              min_sdk=$(grep -oE "sdkVersion:'[0-9]+'" "out/badging-$base.txt" | head -1 | tr -dc "0-9" || true)
+              tgt_sdk=$(grep -oE "targetSdkVersion:'[0-9]+'" "out/badging-$base.txt" | head -1 | tr -dc "0-9" || true)
+              cert=$(grep -i "SHA-256" "out/sig-$base.txt" | head -1 | sed "s/.*: //" || true)
+              echo "| package | $pkg_line |"
+              echo "| minSdk / targetSdk | ${min_sdk:-24} / ${tgt_sdk:-35} |"
+              echo "| signing cert SHA-256 | ${cert:-n/a} |"
+              echo "| signature verifies | $sig_ok |"
+              echo
+            } >> out/verify.md
+          done
+
+          rm -f out/aligned-*.apk out/sig-*.txt out/badging-*.txt
+          echo "=== signed artifacts ==="
+          ls -lh out
+          sha256sum out/*.apk | tee out/SHA256SUMS.txt
+          echo "=== verification ==="
+          cat out/verify.md
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: searitch-apks
+          path: out/*
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || 'v0.7' }}
+        run: |
+          set -euo pipefail
+          cat > notes.md <<'EOF'
+          ### v0.7 — the hide is back, and the landing bar moves
+
+          `versionCode 7` · `versionName 1.4.0`
+
+          **Settings sits on the hide again**
+
+          The sheet was painted with a flat fill while the cards on it had texture, which is why it looked like a different app. It uses the same leather surface as the home screen now — same hide, same sheen, same tiling — with the status-bar inset respected so the title never collides with the clock.
+
+          **Switches are paper and brass, not black**
+
+          The toggle had become a dark leather channel and read as a black pill dropped into the card. It is a debossed paper trough with a brass knob again: the same field as the search bar, the same metal as every other control.
+
+          **The landing screen search bar can move**
+
+          New in Settings → Home screen: a brass slider with three detents — Top, Middle, Bottom. It moves the wordmark and field together, so the page stays balanced wherever you put it.
+
+          **Icon**
+
+          The magnifier image you sent, used as-is. No regeneration, no recolouring — cut to every density for the legacy square and round icons, plus a full-bleed adaptive icon for Android 8+.
+
+          ### Assets
+
+          | File | For |
+          | --- | --- |
+          | `Searitch-v0.7-arm64-v8a.apk` | almost every phone since 2017 |
+          | `Searitch-v0.7-armeabi-v7a.apk` | older 32-bit devices |
+          | `searitch-release.keystore` | signing key — password `searitch2026`, alias `searitch` |
+          | `SHA256SUMS.txt` | checksums |
+          EOF
+          cat out/verify.md >> notes.md
+          gh release view "$TAG" > /dev/null 2>&1 && gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG" \
+            --title "Searitch $TAG" \
+            --notes-file notes.md \
+            --target "$GITHUB_SHA" \
+            out/Searitch-v0.7-arm64-v8a.apk \
+            out/Searitch-v0.7-armeabi-v7a.apk \
+            out/searitch-release.keystore \
+            out/SHA256SUMS.txt

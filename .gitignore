@@ -1,0 +1,6 @@
+# build output of the Kotlin Multiplatform app
+kotlin-app/build/
+kotlin-app/.gradle/
+kotlin-app/composeApp/build/
+kotlin-app/local.properties
+.kotlin/
