@@ -3,6 +3,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- "Set as wallpaper" on the picture panel. Normal permission: granted at
+         install, never prompted for. -->
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
+
     <!-- Only used on Android 8/9, where scoped storage didn't exist yet and a
          download into the public folder still needs the legacy permission. -->
     <uses-permission

@@ -121,7 +121,12 @@ object Api {
         @SerialName("file_type") val fileType: String? = null,
         val thumbs: WhThumbs? = null,
         val tags: List<OvTag> = emptyList(),
+        val category: String? = null,
     )
+
+    /** `/w/{id}` wraps its single wall in `data`; `/search` puts a list there. */
+    @Serializable
+    private data class WhSingle(val data: WhImage? = null)
 
     @Serializable
     private data class WhThumbs(
@@ -325,7 +330,13 @@ object Api {
             SearitchImage(
                 id = "wallhaven:${r.id}",
                 provider = "wallhaven",
-                title = "Wallpaper ${r.dimensionX ?: 0}×${r.dimensionY ?: 0}",
+                // Wallhaven's search payload carries no title *and* no tags, which
+                // is where "Untitled Photo" came from: the old label here was
+                // "Wallpaper 1964×3500", displayTitle() threw that away as noise,
+                // and the caption fell through to Untitled. It is labelled from
+                // what the payload does say until hydrate() fetches the wall's own
+                // record and its real tags arrive.
+                title = wallhavenLabel(r.tags.map { it.name }, r.category, r.dimensionX, r.dimensionY),
                 // `small` (300×200) and `lg` (432×243) are fixed landscape
                 // CROPS — a 1964×3500 phone wall arrives as a 432×243 slice of
                 // its middle. `original` is the only rendition that keeps the
@@ -340,9 +351,76 @@ object Api {
                 filetype = ft,
                 sourceSite = "Wallhaven",
                 sourceUrl = r.url ?: r.path ?: "",
-                tags = r.tags.mapNotNull { it.name.trim().lowercase().takeIf(String::isNotEmpty) }.take(8),
+                tags = wallhavenTags(r.tags),
             )
         }
+    }
+
+    /* ─────────────────────── Wallhaven's missing half ─────────────────────── */
+
+    /**
+     * Wallhaven tags every wall by hand — "fox girl", "fox ears", "flute",
+     * "blue eyes" — but only serves them on the wall's own record. The search
+     * endpoint returns them empty, which left every Wallhaven photo both
+     * untitled and unsimilar.
+     */
+    private fun wallhavenTags(raw: List<OvTag>): List<String> =
+        raw.mapNotNull { it.name.trim().lowercase().takeIf(String::isNotEmpty) }
+            .distinct()
+            .take(8)
+
+    /** Words that describe the shelf a wall sits on, not the wall itself. */
+    private val WALLHAVEN_GENERIC = setOf(
+        "anime", "art", "artwork", "illustration", "digital art", "anime girls",
+        "wallpaper", "fanart", "fan art", "original", "vector", "render",
+    )
+
+    private fun titleCase(s: String): String = s.split(' ').joinToString(" ") { w ->
+        if (w.isEmpty()) w else w[0].uppercaseChar() + w.substring(1)
+    }
+
+    /**
+     * A human label built from the site's own words. Never "Untitled": if the
+     * record has tags the specific ones name it, and if it somehow has none the
+     * category and size still say something true.
+     */
+    private fun wallhavenLabel(
+        tags: List<String>,
+        category: String?,
+        w: Int?,
+        h: Int?,
+    ): String {
+        val clean = tags.map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+        val specific = clean.filterNot { it in WALLHAVEN_GENERIC }
+        val named = (if (specific.isNotEmpty()) specific else clean)
+            .distinct()
+            .take(3)
+            .map { titleCase(it) }
+        if (named.isNotEmpty()) return named.joinToString(" · ")
+        val cat = category?.trim()?.takeIf { it.isNotEmpty() }?.let { titleCase(it) }
+        val size = if ((w ?: 0) > 0 && (h ?: 0) > 0) "$w × $h" else null
+        return listOfNotNull(cat, size).joinToString(" · ").ifBlank { "Wallhaven plate" }
+    }
+
+    /**
+     * Fills in what a search response left out. Today that is Wallhaven's tags
+     * and title; the call only happens when a photo is actually opened, so it
+     * costs one small JSON request per visit, not one per card on the grid.
+     */
+    suspend fun hydrate(img: SearitchImage): SearitchImage {
+        if (img.provider != "wallhaven" || img.tags.isNotEmpty()) return img
+        val raw = img.id.substringAfter(':').trim()
+        if (raw.isEmpty() || raw == img.id) return img
+        return runCatching {
+            val res: WhSingle = http.get("https://wallhaven.cc/api/v1/w/$raw").body()
+            val d = res.data ?: return@runCatching img
+            val tags = wallhavenTags(d.tags)
+            if (tags.isEmpty()) return@runCatching img
+            img.copy(
+                title = wallhavenLabel(d.tags.map { it.name }, d.category, img.width, img.height),
+                tags = tags,
+            )
+        }.getOrDefault(img)
     }
 
     // ---------------------------------------------------------- flickr ----
@@ -1234,27 +1312,94 @@ object Api {
 
     // --------------------------------------------------------- related ----
 
+    /**
+     * "Similar" means "shares this picture's subject", not "matches the word the
+     * user typed".
+     *
+     * What was here before re-ran the *search text* — so a Wallhaven wall that
+     * arrived with no tags of its own was "similar" to the literal word
+     * `wallpaper`, and the strip filled up with mountains, paper rolls and a
+     * group photo. Three things fix that:
+     *
+     *  1. [hydrate] asks the source for the metadata a search response drops
+     *     (Wallhaven's tags), so a photo has a subject at all.
+     *  2. The subject — from the source's own tags, or from the words in its
+     *     title — is searched instead of the query.
+     *  3. Every candidate is scored on that subject and the ones that don't name
+     *     it are dropped, then the strip is mixed across sites. The detail
+     *     screen finishes the job by re-ordering what comes back by how much the
+     *     pictures actually look alike (see Visual.rank).
+     */
     suspend fun related(img: SearitchImage): List<SearitchImage> {
-        // Openverse exposes a related endpoint keyed on the image itself — the
-        // closest thing to "more like this" any of these APIs offers.
-        if (img.provider == "openverse") {
-            val rawId = img.id.substringAfter(':')
-            runCatching {
+        val src = hydrate(img)
+        val subject = subjectOf(src)
+
+        // Openverse publishes an ML "more like this" index keyed on the image
+        // itself. It is the only source that can answer without guessing, so it
+        // is asked first and its answer still goes through the subject check.
+        if (src.provider == "openverse") {
+            val rawId = src.id.substringAfter(':')
+            val near = runCatching {
                 val res: OvResponse = http
-                    .get("https://api.openverse.org/v1/images/$rawId/related/?page_size=16")
+                    .get("https://api.openverse.org/v1/images/$rawId/related/?page_size=20")
                     .body()
                 res.results.map { it.toImage() }
-            }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
+            }.getOrDefault(emptyList())
+            val ranked = rankBySubject(src, near, subject)
+            if (ranked.isNotEmpty()) return ranked
         }
 
-        // Otherwise the metadata is the only signal there is, so use the part of
-        // it that actually names the subject: the source's own tags, and only
-        // when there are none, the words in the title.
-        val words = relatedKeywords(img)
-        if (words.isEmpty()) return emptyList()
-        return search(words, Filters(), 1)
-            .filter { it.id != img.id && it.full != img.full }
-            .take(24)
+        if (subject.isEmpty()) return emptyList()
+        // Two words carry the subject without pinning the search so tightly that
+        // a source returns nothing; a wider pass is made only when it does.
+        val pool = search(subject.take(2).joinToString(" "), Filters(), 1)
+        val narrow = rankBySubject(src, pool, subject)
+        if (narrow.size >= 8) return narrow
+        return rankBySubject(src, pool + search(subject.first(), Filters(), 1), subject)
+    }
+
+    /**
+     * Keeps the results that share a subject word with [src] and puts them in
+     * order of how much they share. A tag hit counts for more than a title hit
+     * because tags are curated; the same site counts for a little, because the
+     * same wall collection or the same museum is a real hint.
+     *
+     * Nothing is kept on the strength of the site alone — that is exactly how a
+     * group photo ended up next to an anime wall.
+     */
+    private fun rankBySubject(
+        src: SearitchImage,
+        pool: List<SearitchImage>,
+        subject: List<String>,
+    ): List<SearitchImage> {
+        val candidates = pool
+            .filter { it.id != src.id && it.full.isNotEmpty() && it.full != src.full }
+            .distinctBy { it.full }
+        if (subject.isEmpty() || candidates.isEmpty()) return candidates.take(24)
+
+        val scored = candidates.map { cand ->
+            val tags = cand.tags.joinToString(" ").lowercase()
+            val title = cand.title.lowercase()
+            var score = 0
+            for (word in subject) {
+                when {
+                    tags.contains(word) -> score += 3
+                    title.contains(word) -> score += 2
+                }
+            }
+            if (cand.provider == src.provider) score += 1
+            cand to score
+        }
+
+        val named = scored.filter { it.second >= 2 }
+        val chosen = if (named.size >= 6) named else scored
+        // Mix the sites instead of letting one collection fill the strip.
+        val buckets = chosen
+            .sortedByDescending { it.second }
+            .groupBy { it.first.provider }
+            .values
+            .map { group -> group.map { it.first }.take(8) }
+        return interleave(buckets).take(24)
     }
 
     /** Words that identify a subject rather than describe a file. */
@@ -1263,18 +1408,22 @@ object Api {
         "images", "picture", "pictures", "untitled", "stock", "photography", "of", "in",
         "on", "at", "by", "a", "an", "to", "public", "domain", "collection", "museum",
         "jpg", "png", "file", "art", "print",
-    )
+    ) + WALLHAVEN_GENERIC
 
     /**
-     * The words a "similar images" search is built from. Public so the detail
-     * screen can show them instead of leaving the user guessing.
+     * The subject of a photo, as one to three phrases: the source's own tags
+     * ("fox girl", "flute"), or when it has none, the naming words of its title.
+     *
+     * Hostnames are not subjects: Bing labels a card with the site it came from,
+     * and "wallhaven.cc" as a subject is how a search turns into noise.
      */
-    fun relatedKeywords(img: SearitchImage): String {
+    fun subjectOf(img: SearitchImage): List<String> {
         val tags = img.tags
             .map { it.substringBefore('-').trim().lowercase() }
-            .filter { it.length in 3..24 && it !in NOISE && it.any(Char::isLetter) }
+            .filter { it.length in 3..28 && it !in NOISE && it.any(Char::isLetter) }
+            .filterNot { it.contains('.') || it.contains('/') || it.contains(':') }
             .distinct()
-        if (tags.isNotEmpty()) return tags.take(2).joinToString(" ")
+        if (tags.isNotEmpty()) return tags.take(3)
 
         // Museum titles put the subject first: "Cat Coffin", "Moonrise", "Lion
         // (One of a Pair)" — trim the catalogue tail before splitting.
@@ -1284,13 +1433,15 @@ object Api {
             .substringBefore('—')
             .substringBefore('|')
             .trim()
-        val words = title
+        return title
             .replace(Regex("[_\\-./:]"), " ")
             .split(Regex("\\s+"))
             .map { it.lowercase().trim() }
             .filter { it.length > 2 && it !in NOISE && it.any(Char::isLetter) }
             .distinct()
             .take(3)
-        return words.joinToString(" ")
     }
+
+    /** What the detail screen shows under SIMILAR IMAGES: "fox girl · flute". */
+    fun subjectLabel(img: SearitchImage): String = subjectOf(img).joinToString(" · ")
 }
