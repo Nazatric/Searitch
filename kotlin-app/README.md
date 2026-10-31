@@ -1,147 +1,88 @@
-# Searitch — Kotlin + Compose Multiplatform + Kotlin/Wasm
+# Searitch — app module
 
-Universal image search with a skeuomorphic **leather & paper** UI.
-One shared Compose codebase, two targets:
+Developer notes for the Compose Multiplatform app. For what the app is and how to
+install it, see the [top-level README](../README.md).
 
-| Target   | What you get                           |
-|----------|----------------------------------------|
-| `wasmJs` | Kotlin/Wasm web app (runs in browser)   |
-| `android`| Native APK                              |
+Two targets, one shared codebase:
 
-All animations are transform/alpha-only `graphicsLayer` + `spring()` physics,
-so they render at the display's native refresh rate (60/90/120 Hz)
-automatically on Android — no extra work needed.
-
-## Real data sources (no fake content)
-
-Queried live, in parallel, from common code (`Api.kt`):
-
-- **Openverse** — `api.openverse.org` — an index of ~915 million images across
-  52 sites. We use it for *metadata only*: its thumbnail proxy lives on the API
-  host and can hang for tens of seconds, so we always render the original URL.
-- **Wikimedia Commons** — `commons.wikimedia.org` — 89M+ media files.
-- **Wallhaven** — `wallhaven.cc` — community wallpapers with native
-  color-palette search.
-- **Flickr** — `api.flickr.com` public feed — recent uploads by tag.
-
-Because Openverse's own endpoint is slow (it fans out to all 52 sites), the
-remaining sites are queried **directly**, in parallel, so results stream in per
-source instead of waiting for the slowest one:
-
-- **iNaturalist** — 266M observations (CC-licensed nature photography)
-- **Europeana** — 14M cultural-heritage objects
-- **The Met** — 498k public-domain works
-- **NASA** — 132k public-domain images
-- **V&A Museum** — 2.5M objects
-- **Smithsonian Open Access** — 5M+ objects across 20 museums
-- **Phylopic** — 13k scientific silhouettes (transparent PNGs)
-
-Together these give Searitch access to roughly a billion licensed images.
-
-> Browser note: Wallhaven and the Flickr feed do not send CORS headers, so
-> they only return results in the **Android** build. Openverse and Wikimedia
-> send CORS headers and work everywhere. Failures of any one source are
-> swallowed — the others still deliver.
-
-## Features
-
-- **Keyword search with streaming results** & infinite "Load more" paging
-- **Safe Search Filter** — strictly filters adult and mature content (enabled by default, can be toggled off)
-- **Anti-AI Filter** — blocks Midjourney, Stable Diffusion, DALL-E and generative AI images across titles, tags, creators and sources (enabled by default, can be toggled off)
-- **Filters**: file type (JPG/PNG/GIF/SVG/transparent), orientation, size,
-  12-color palette, license (commercial / allows editing), source selection, Safe search & Anti-AI controls
-- **Mobile-optimized**: Fullscreen portrait orientation with safe-area insets, pinned filter access, and floating back-to-top button
-- **Image detail page**: full image, source/creator/license/dimensions metadata,
-  **Download** and **Visit source**, plus a **Similar images** grid
-- **Screens**: Home → Search → Detail with shared-element photo zoom and a
-  modal bottom sheet for filters (clean, unbloated, minimal)
+| Target | Output |
+| --- | --- |
+| `android` | native APK |
+| `wasmJs` | Kotlin/Wasm web app |
 
 ## Requirements
 
-- JDK 17+
-- Android SDK (for the APK target) — set `sdk.dir` in `local.properties`
-  or the `ANDROID_HOME` env var
-- No API keys needed. All sources are keyless.
+- JDK 17
+- Android SDK — `ANDROID_HOME`, or `sdk.dir` in `local.properties`
+- No API keys
 
-## Build & run
+## Build
 
 ```bash
-# Web (Kotlin/Wasm) — dev server with hot reload
-./gradlew :composeApp:wasmJsBrowserDevelopmentRun
-
-# Web production bundle (output: composeApp/build/dist/wasmJs/productionExecutable)
-./gradlew :composeApp:wasmJsBrowserDistribution
-
-# Android debug APK (output: composeApp/build/outputs/apk/debug)
+./gradlew :composeApp:assembleRelease        # APKs
 ./gradlew :composeApp:assembleDebug
-
-# Android release APK
-./gradlew :composeApp:assembleRelease
+./gradlew :composeApp:wasmJsBrowserDevelopmentRun
+./gradlew :composeApp:wasmJsBrowserDistribution
 ```
 
-If you don't have a Gradle wrapper yet, generate one with a locally
-installed Gradle 8.9+: `gradle wrapper --gradle-version 8.11.1`
+The archive this project came from has no `gradle/wrapper/gradle-wrapper.jar`.
+Generate it once if you need it:
 
-## Project layout
-
-```
-composeApp/src/commonMain/kotlin/app/searitch/
-  Model.kt        # image model, filter enums, color palette
-  Api.kt          # Ktor client → Openverse / Wikimedia / Wallhaven, aggregation
-  Theme.kt        # leather & paper color system, gradient brushes
-  Components.kt   # BrassButton, chips, PhotoCard, skeletons, press physics
-  HomeScreen.kt   # minimal landing: wordmark, search card, starter chips
-  SearchScreen.kt # staggered results grid + filter bottom sheet
-  DetailScreen.kt # full image, metadata, download, similar images
-  App.kt          # navigation backstack + screen transitions
-composeApp/src/androidMain/   # MainActivity + manifest
-composeApp/src/wasmJsMain/    # browser entry point + index.html
+```bash
+gradle wrapper --gradle-version 8.11.1
 ```
 
-## Look & motion (mirrors the web app)
+## Architecture
 
-- **Surfaces** — `composeResources/drawable/leather.webp` (864 px) and `paper.webp`
-  (576 px), generated by `scripts/make-textures.mjs` from `assets-src/`. They are
-  tiled at 288 dp (3 texture px per dp → 1:1 on a 3× phone, crisp on 2×) with
-  `FilterQuality.High` via `Modifier.leatherSurface()` / `paperSurface()`.
-- **Type** — Cinzel Bold (`composeResources/font/cinzel_bold.ttf`) for the wordmark
-  and headings. The wordmark uses `FoilBrush` (gold-stamp gradient).
-- **Leather strap** — `Modifier.leatherStrap()` draws hide + sheen + a row of
-  slanted saddle stitches (`stitchRow`). Controls are recessed `WellButton`s.
-- **Icons** — drawn with strokes in `Icons.kt` (no icon font, crisp at any density).
-- **Photo prints** — `PhotoCard` is a thin paper mat around the photo; no tilt.
+**Search** — `Api.searchStream()` is a `Flow`: each source is launched in
+parallel and emitted the moment it answers. The opening batch is gathered for
+320 ms and interleaved so the first screen is a real mix of sites, not one
+source. A source that fails twice is skipped for five requests.
 
-## Navigation & transitions
+**State** — a `SearchSession` owns results, paging, scroll offset and errors, and
+lives in a `SessionHost` above the navigation graph. That's what stops Back from
+re-running a search. `SettingsState` is a single observable object that persists
+itself to `PlatformStore` on every change.
 
-`App.kt` is a back-stack inside `SharedTransitionLayout` + `AnimatedContent`.
-Tapping a photo **flies it** from the grid card into the detail hero (and back on
-return) using `sharedElement` with a spring `boundsTransform`; the home search
-field glides into the results strap with `sharedBounds`. The screen cross-fade is
-kept to 200 ms so the shared photo does the moving. `PlatformBackHandler` makes
-the Android back button/gesture pop the stack instead of closing the app.
+**Materials** — `Theme.kt` exposes `Leather`, `Paper`, `Brass` and `Ink` as
+getters over the live palette, so every call site repaints when a tone changes.
+Surfaces tile their texture through a repeated `ImageShader` (see
+`rememberTextureBrush`); Classic hide and Cream stock draw the original bitmaps
+untinted, the other tones overlay a grey grain map on the chosen colour.
 
-## HDR images
+**Platform seams** — all `expect/actual`:
 
-On Android 14+ (API 34+) the detail image automatically requests HDR window mode
-**only if Coil decodes an Ultra HDR JPEG with a gain map** (`Bitmap.hasGainmap()`).
-The original window color mode is restored when leaving the detail screen. SDR
-images and unsupported devices remain SDR. On Kotlin/Wasm, the browser's native
-HDR image pipeline is used when the screen/browser supports it; otherwise normal
-SDR display is unchanged. HDR is source-dependent: the app does not invent HDR
-pixels or alter the downloaded original.
+| Expect | Android | Wasm |
+| --- | --- | --- |
+| `PlatformStore` | SharedPreferences + `filesDir` | `localStorage` |
+| `ImageDownloader` | MediaStore (API 29+), DownloadManager below | opens the file |
+| `rememberHaptics` | view + Compose haptics | no-op |
+| `PlatformBackHandler` | `BackHandler` | no-op |
+| `PlatformSystemBars` | window insets controller | no-op |
+| `PlatformHdrWindow` | Ultra HDR gain-map check | no-op |
+| `currentTimeMillis` | `System.currentTimeMillis()` | monotonic from start-up |
 
-## Search
+## Textures
 
-`Api.searchStream` is a `Flow`: each source's results are emitted the moment that
-source answers (first photos after the fastest source), with the opening batch
-gathered for 320 ms and interleaved across sources so the first screen is a real
-mix of sites. `SearchScreen` collects it, shows a thread of light under the strap
-while sources are still arriving, loads the next page automatically as you scroll
-(endless scroll), and offers smart facets and removable active-filter chips.
+`tools/make-textures.py` builds `composeResources/drawable/leather_grain.png` and
+`paper_grain.png` from the sources in `assets-src/`. It crops a seamless tile,
+sharpens lightly, and normalises luminance into a narrow band around mid-grey so
+the grain can be overlaid on any tone without clipping.
 
-## Status
+```bash
+python3 tools/make-textures.py    # needs pillow
+```
 
-This sandbox cannot run Gradle, so the Kotlin project is **uncompiled** here. It is
-written against Compose Multiplatform 1.8 / Kotlin 2.1: if the generated resource
-accessors (`Res.drawable.leather`, `Res.font.cinzel_bold`) don't resolve, run a
-Gradle sync once so `generateComposeResClass` runs.
+## Model
+
+`SearitchImage` and `Filters` are `@Immutable` on purpose — grid items and rows
+can then be skipped during recomposition instead of rebuilt on every scroll.
+
+## Gotchas
+
+- `gradle.properties` enables the configuration cache; the release workflow
+  disables it for the ABI-split init script.
+- The web target has no epoch clock, so cache ages are measured from start-up
+  there. A negative age means "unknown" and is treated as fresh.
+- `PlatformStore.attach()` must run before the first composition (see
+  `MainActivity`).
