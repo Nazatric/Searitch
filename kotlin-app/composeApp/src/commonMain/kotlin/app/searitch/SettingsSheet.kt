@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -69,6 +70,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -133,8 +135,10 @@ fun GearButton(onClick: () -> Unit, open: Boolean, modifier: Modifier = Modifier
     ) {
         Cog(
             rotation = rotation,
-            top = lerp(pal.brassText, Color.Black, 0.18f),
-            bottom = lerp(pal.brassText, Color.Black, 0.55f),
+            // engraved brass: the cog is darker metal in a lighter disc, never
+            // black — black here read as a sticker sitting on top of the metal
+            top = lerp(pal.brassDark, pal.leatherBase, 0.35f),
+            bottom = lerp(pal.brassDark, Color.Black, 0.30f),
             modifier = Modifier.size(25.dp),
         )
     }
@@ -562,8 +566,8 @@ private fun MaterialPreview() {
             ) {
                 Cog(
                     rotation = 0f,
-                    top = lerp(pal.brassText, Color.Black, 0.18f),
-                    bottom = lerp(pal.brassText, Color.Black, 0.55f),
+                    top = lerp(pal.brassDark, pal.leatherBase, 0.35f),
+                    bottom = lerp(pal.brassDark, Color.Black, 0.30f),
                     modifier = Modifier.size(25.dp),
                 )
             }
@@ -686,6 +690,7 @@ private fun <T> ToneRow(
 private fun ToggleRow(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
     val pal = LocalPalette.current
     val haptics = rememberHaptics()
+    val motion = LocalSettings.current.value.motion
     Row(
         Modifier
             .fillMaxWidth()
@@ -709,23 +714,49 @@ private fun ToggleRow(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(end = 10.dp).weight(1f),
         )
-        // recessed track + sliding brass knob
+        /*
+         * A leather channel with a travelling knob: brass when on, paper when off.
+         * Earlier this used a black track and a black knob, which read as a
+         * cheap 3D widget dropped into the card.
+         */
+        val travel by animateFloatAsState(
+            targetValue = if (on) 1f else 0f,
+            animationSpec = if (motion) {
+                spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMediumLow)
+            } else {
+                tween(0)
+            },
+            label = "knob",
+        )
         Box(
             Modifier
                 .size(width = 46.dp, height = 26.dp)
                 .clip(CircleShape)
-                .background(if (on) pal.brassDeep.copy(alpha = 0.35f) else Color(0x22000000), CircleShape)
-                .border(1.dp, if (on) pal.brassDark else Ink.faint.copy(alpha = 0.35f), CircleShape)
-                .padding(3.dp),
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            lerp(pal.leatherDark, Color.Black, 0.25f),
+                            pal.leatherBase,
+                        ),
+                    ),
+                    CircleShape,
+                )
+                .border(1.dp, pal.leatherHighlight.copy(alpha = 0.9f), CircleShape),
+            contentAlignment = Alignment.CenterStart,
         ) {
             Box(
                 Modifier
-                    .align(if (on) Alignment.CenterEnd else Alignment.CenterStart)
+                    .padding(horizontal = 3.dp)
+                    .offset { IntOffset((23f * travel * density).toInt(), 0) }
                     .size(20.dp)
                     .shadow(2.dp, CircleShape)
                     .clip(CircleShape)
-                    .background(if (on) brassBrush() else Brush.verticalGradient(listOf(Ink.faint, Ink.soft)))
-                    .border(1.dp, if (on) pal.brassDark else Ink.soft, CircleShape),
+                    .background(
+                        if (on) brassBrush()
+                        else Brush.verticalGradient(listOf(Color.White, pal.paperDeep)),
+                        CircleShape,
+                    )
+                    .border(1.dp, if (on) pal.brassDark else pal.paperWell, CircleShape),
             )
         }
     }

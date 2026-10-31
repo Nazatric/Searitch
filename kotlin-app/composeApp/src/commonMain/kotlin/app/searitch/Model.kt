@@ -13,6 +13,12 @@ data class SearitchImage(
     val thumb: String,
     /** Lower-res rendition the UI falls back to if `thumb` fails. */
     val thumbFallback: String? = null,
+    /**
+     * Screen-resolution rendition, between [thumb] and [full].
+     * The detail hero paints this first: at phone size it is already sharp, so
+     * a photo never appears blurry while the original downloads.
+     */
+    val preview: String? = null,
     val full: String,
     val width: Int,
     val height: Int,

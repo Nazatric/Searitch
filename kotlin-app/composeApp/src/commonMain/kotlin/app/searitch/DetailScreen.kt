@@ -65,13 +65,27 @@ import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
 import kotlinx.coroutines.launch
 
-/** A sharper-than-thumbnail rendition for the hero (Wikimedia serves any standard width). */
-private fun heroModel(img: SearitchImage): String =
-    if (img.width >= 1280 && Regex("/thumb/.+/\\d+px-").containsMatchIn(img.thumb)) {
-        img.thumb.replace(Regex("/\\d+px-"), "/1280px-")
-    } else {
-        img.full
+/**
+ * What the hero paints first, and what (if anything) it upgrades to.
+ *
+ * The old hero painted the *grid thumbnail* — 300x200 for Wallhaven — stretched
+ * across the screen, then waited seconds for the original. At phone size the
+ * preview is already sharp, so it goes up immediately; the original is only
+ * fetched when the preview is actually smaller than that.
+ */
+private data class HeroRendition(val first: String, val sharp: String?)
+
+private fun heroRendition(img: SearitchImage): HeroRendition {
+    val preview = img.preview?.takeIf { it.isNotBlank() }
+    val first = preview ?: img.thumb.ifBlank { img.full }
+    // a preview this wide is indistinguishable from the original on a phone
+    val sharp = when {
+        preview == null -> img.full.takeIf { it != first }
+        img.width in 1..2600 -> null
+        else -> img.full.takeIf { it != first }
     }
+    return HeroRendition(first, sharp)
+}
 
 private val SKELETON_RATIOS = listOf(1.5f, 0.75f, 1.1f, 0.7f, 1.35f, 0.9f)
 
@@ -126,9 +140,18 @@ fun DetailScreen(
     } else {
         4f / 3f
     }
-    val heroPainter = rememberAsyncImagePainter(model = heroModel(img))
+    val rendition = remember(img.id) { heroRendition(img) }
+    val firstPainter = rememberAsyncImagePainter(model = rendition.first)
+    val sharpPainter = rendition.sharp?.let { rememberAsyncImagePainter(model = it) }
+    val sharpLoaded = sharpPainter?.state is AsyncImagePainter.State.Success
+    val sharpAlpha by animateFloatAsState(
+        targetValue = if (sharpLoaded) 1f else 0f,
+        animationSpec = tween(if (settings.motion) 260 else 0),
+        label = "heroSharpen",
+    )
     val decodedHero: CoilImage? =
-        (heroPainter.state as? AsyncImagePainter.State.Success)?.result?.image
+        ((sharpPainter?.state ?: firstPainter.state) as? AsyncImagePainter.State.Success)
+            ?.result?.image
     // On Android 14+, the window switches to HDR only when this decoded image
     // actually contains an Ultra HDR gain map. SDR sources remain ordinary SDR.
     PlatformHdrWindow(image = decodedHero, enabled = true)
@@ -197,19 +220,41 @@ fun DetailScreen(
                             .clip(RoundedCornerShape(3.dp))
                             .background(Paper.imageWell),
                     ) {
-                        // the grid thumbnail is already cached → paints instantly under the sharp one
-                        AsyncImage(
-                            model = img.thumb,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
-                        )
                         ComposeImage(
-                            painter = heroPainter,
+                            painter = firstPainter,
                             contentDescription = img.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
                         )
+                        if (sharpPainter != null) {
+                            ComposeImage(
+                                painter = sharpPainter,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer { alpha = sharpAlpha },
+                            )
+                        }
+                        // a quiet brass thread instead of a blank wait
+                        if (sharpPainter != null && !sharpLoaded) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xCC1C1008))
+                                    .padding(horizontal = 9.dp, vertical = 5.dp),
+                            ) {
+                                Text(
+                                    "FINISHING",
+                                    color = Ink.thread,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 1.2.sp,
+                                )
+                            }
+                        }
                     }
 
                     FlowRow(

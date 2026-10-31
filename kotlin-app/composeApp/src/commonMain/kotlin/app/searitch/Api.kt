@@ -122,7 +122,11 @@ object Api {
     )
 
     @Serializable
-    private data class WhThumbs(val small: String? = null, val original: String? = null)
+    private data class WhThumbs(
+        val small: String? = null,
+        val large: String? = null,
+        val original: String? = null,
+    )
 
     // --------------------------------------------------------- helpers ----
 
@@ -259,6 +263,7 @@ object Api {
                 provider = "wikimedia",
                 title = pg.title.removePrefix("File:").substringBeforeLast('.'),
                 thumb = info.thumburl ?: info.url ?: "",
+                preview = info.thumburl?.replace(Regex("/\\d+px-"), "/1280px-"),
                 full = info.url ?: "",
                 width = info.width ?: 0,
                 height = info.height ?: 0,
@@ -306,6 +311,8 @@ object Api {
                 provider = "wallhaven",
                 title = "Wallpaper ${r.dimensionX ?: 0}×${r.dimensionY ?: 0}",
                 thumb = r.thumbs?.small ?: r.thumbs?.original ?: r.path ?: "",
+                // `large` is ~1920px: sharp on a phone, a fraction of the original
+                preview = r.thumbs?.large ?: r.thumbs?.original,
                 full = r.path ?: "",
                 width = r.dimensionX ?: 0,
                 height = r.dimensionY ?: 0,
