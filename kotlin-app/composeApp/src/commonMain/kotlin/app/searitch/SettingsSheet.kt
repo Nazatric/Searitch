@@ -551,18 +551,19 @@ private fun MaterialPreview() {
         ) {
             Text("PREVIEW", color = Ink.onLeatherSoft, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
             // the real medallion, just not pressable in here
+            val pal = LocalPalette.current
             Box(
                 Modifier
                     .size(44.dp)
                     .shadow(5.dp, CircleShape)
                     .clip(CircleShape)
-                    .drawBehind { drawMedallion(LocalPalette.current) },
+                    .drawBehind { drawMedallion(pal) },
                 contentAlignment = Alignment.Center,
             ) {
                 Cog(
                     rotation = 0f,
-                    top = lerp(LocalPalette.current.brassText, Color.Black, 0.18f),
-                    bottom = lerp(LocalPalette.current.brassText, Color.Black, 0.55f),
+                    top = lerp(pal.brassText, Color.Black, 0.18f),
+                    bottom = lerp(pal.brassText, Color.Black, 0.55f),
                     modifier = Modifier.size(25.dp),
                 )
             }

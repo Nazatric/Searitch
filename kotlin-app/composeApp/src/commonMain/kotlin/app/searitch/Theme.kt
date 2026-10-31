@@ -169,6 +169,19 @@ private fun Modifier.textureOverlay(brush: ShaderBrush?, overlay: Boolean): Modi
         )
     }
 
+private val pageSheen = Brush.verticalGradient(
+    0f to Color(0x1FFFD796),
+    0.5f to Color(0x00000000),
+    1f to Color(0x57000000),
+)
+private val strapSheen = Brush.verticalGradient(listOf(Color(0x2BFFE4B8), Color(0x38000000)))
+private val sheetSheen = Brush.verticalGradient(listOf(Color(0x24FFE4B8), Color(0x38000000)))
+private val fieldShade = Brush.verticalGradient(
+    0f to Color(0x4D6E5530),
+    0.45f to Color(0x00FFFFFF),
+    1f to Color(0x33FFFFFF),
+)
+
 /** Leather page: base colour → tiled hide → soft vignette. */
 @Composable
 fun Modifier.leatherSurface(shape: Shape = RectangleShape, tall: Boolean = false): Modifier {
