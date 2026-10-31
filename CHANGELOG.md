@@ -5,6 +5,30 @@ APKs, signed, with the keystore and checksums attached.
 
 ---
 
+## v0.6 — 31 Oct 2026
+
+`versionCode 6` · `versionName 1.3.1`
+
+**Sharp photos immediately.**
+
+- The detail hero was stretching the grid thumbnail across the screen and waiting
+  seconds for the original — for Wallhaven that thumbnail is a 300×200 file, so
+  the first thing you saw was a blur. Every source now carries a
+  screen-resolution preview (Wallhaven's ~1920px `large`, Wikimedia's 1280px
+  rendition, and so on), which paints at once. The original is only fetched when
+  the preview is genuinely smaller than the screen, and a small brass
+  `FINISHING` tag shows while that happens.
+- Toggles were a black track with a black knob and read as a cheap 3D widget in a
+  paper card. They are a stitched leather channel with a travelling knob now:
+  brass when on, paper when off.
+- The cog was near-black and looked like a sticker on the medallion. It is
+  engraved brass — darker metal in a lighter disc, edge-lit instead of filled
+  black.
+- New app icon: the brass magnifier on saddle leather, generated for this build
+  and cut for every density, with a full-bleed adaptive icon for Android 8+.
+
+---
+
 ## v0.5 — 31 Oct 2026
 
 `versionCode 5` · `versionName 1.3.0`
