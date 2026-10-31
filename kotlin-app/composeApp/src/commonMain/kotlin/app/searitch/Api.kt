@@ -26,15 +26,17 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Searitch aggregation layer (common code — runs the same on Android & Wasm).
- * Queries three real, keyless image APIs in parallel:
- *  - Openverse (index of 700M+ images: Flickr, Wikimedia, NASA, museums, …)
- *  - Wikimedia Commons (100M+ media files)
- *  - Wallhaven (community wallpapers with native color search)
+ * Searitch search layer (common code — identical on Android and Wasm).
  *
- * NOTE for the Wasm/browser target: Openverse and Wikimedia send CORS headers
- * and work in-browser. Wallhaven has no CORS headers, so it only returns
- * results in the native Android build — failures are swallowed gracefully.
+ * Thirteen keyless sources, queried in parallel and merged as each one answers:
+ * Bing (the open web), Openverse, Wikimedia Commons, Wallhaven, Flickr,
+ * iNaturalist, NASA, the Met, the Art Institute of Chicago, the Cleveland
+ * Museum of Art, the Library of Congress, Europeana and the V&A.
+ *
+ * No source needs a key or an account. Filters are only applied where a source
+ * can genuinely honour them — see [providers]. On the Wasm target the sources
+ * that send no CORS headers (Bing, Wallhaven, Flickr) stay quiet instead of
+ * failing the search.
  */
 object Api {
 
@@ -142,11 +144,24 @@ object Api {
     private fun stripHtml(html: String?): String? =
         html?.replace(Regex("<[^>]*>"), "")?.trim()?.takeIf { it.isNotEmpty() }
 
+    /**
+     * Openverse has no colour field — it searches text. So a colour reaches it as
+     * a word in the query, which is the only thing it can honour. Sources that
+     * *do* filter by colour (Bing, Wallhaven) get a real parameter instead, and
+     * sources with no colour metadata at all are skipped when a colour is picked
+     * — see [providers].
+     */
     private fun colorTerm(f: Filters): String =
         COLOR_OPTIONS.firstOrNull { it.key == f.color }?.let { " ${it.key}" } ?: ""
 
+    /**
+     * Orientation and size are checked against the dimensions the source
+     * actually reported. An image whose size is unknown is left out when the
+     * filter is on — "Landscape" then means landscape, not "probably".
+     */
     private fun matchesAspect(img: SearitchImage, aspect: AspectFilter): Boolean {
-        if (aspect == AspectFilter.ANY || img.width == 0 || img.height == 0) return true
+        if (aspect == AspectFilter.ANY) return true
+        if (img.width <= 0 || img.height <= 0) return false
         val r = img.width.toDouble() / img.height
         return when (aspect) {
             AspectFilter.WIDE -> r >= 1.2
@@ -156,7 +171,8 @@ object Api {
     }
 
     private fun matchesSize(img: SearitchImage, size: SizeFilter): Boolean {
-        if (size == SizeFilter.ANY || img.width == 0 || img.height == 0) return true
+        if (size == SizeFilter.ANY) return true
+        if (img.width <= 0 || img.height <= 0) return false
         val mp = img.width.toDouble() * img.height / 1_000_000
         return when (size) {
             SizeFilter.SMALL -> mp < 1
@@ -232,7 +248,7 @@ object Api {
     )
 
     private suspend fun searchWikimedia(q: String, f: Filters, page: Int): List<SearitchImage> {
-        var search = q + colorTerm(f)
+        var search = q
         MIME_FOR_TYPE[f.type]?.let { search += " filemime:$it" }
 
         val url = URLBuilder().apply {
@@ -350,8 +366,7 @@ object Api {
         if (f.license != LicenseFilter.ANY) return emptyList()
         if (f.aspect != AspectFilter.ANY || f.size != SizeFilter.ANY) return emptyList()
 
-        val tags = (q.trim().replace(Regex("\\s+"), ",") + colorTerm(f).trim()
-            .let { if (it.isEmpty()) "" else ",$it" })
+        val tags = q.trim().replace(Regex("\\s+"), ",")
         val url = URLBuilder().apply {
             takeFrom("https://api.flickr.com/services/feeds/photos_public.gne")
             parameters.append("tags", tags)
@@ -410,29 +425,69 @@ object Api {
         }
     }
 
-    private fun budgetFor(name: String): Long = if (name == "openverse") 4_000 else 3_500
+    private fun budgetFor(name: String): Long = when (name) {
+        "openverse" -> 4_000
+        "bing" -> 5_000
+        "loc" -> 5_000
+        else -> 3_500
+    }
+
+    /** Sources whose API takes a colour and really filters by it. */
+    private val COLOUR_AWARE = setOf(
+        ProviderFilter.BING, ProviderFilter.WALLHAVEN, ProviderFilter.OPENVERSE,
+    )
+
+    /**
+     * Sources that publish a licence we can actually test a licence filter
+     * against. Wallhaven, Flickr and Bing index other people's pages, so they
+     * are dropped rather than passed off as "commercial use" when one is asked
+     * for.
+     */
+    private val LICENCE_AWARE = setOf(
+        ProviderFilter.OPENVERSE, ProviderFilter.WIKIMEDIA, ProviderFilter.INATURALIST,
+        ProviderFilter.NASA, ProviderFilter.MET, ProviderFilter.AIC,
+        ProviderFilter.CLEVELAND, ProviderFilter.LOC, ProviderFilter.EUROPEANA,
+        ProviderFilter.VAM,
+    )
+
+    /**
+     * The one place that decides which sources a search touches.
+     *
+     * A filter is never applied by pretending: a source that cannot honour it is
+     * left out, so what comes back is always what was asked for.
+     */
+    private fun providers(
+        q: String,
+        f: Filters,
+        page: Int,
+    ): List<Pair<String, suspend () -> List<SearitchImage>>> {
+        val all: List<Triple<ProviderFilter, String, suspend () -> List<SearitchImage>>> = listOf(
+            Triple(ProviderFilter.BING, "bing") { searchBing(q, f, page) },
+            Triple(ProviderFilter.OPENVERSE, "openverse") { searchOpenverse(q, f, page) },
+            Triple(ProviderFilter.WIKIMEDIA, "wikimedia") { searchWikimedia(q, f, page) },
+            Triple(ProviderFilter.WALLHAVEN, "wallhaven") { searchWallhaven(q, f, page) },
+            Triple(ProviderFilter.FLICKR, "flickr") { searchFlickr(q, f, page) },
+            Triple(ProviderFilter.INATURALIST, "inaturalist") { searchINaturalist(q) },
+            Triple(ProviderFilter.NASA, "nasa") { searchNasa(q) },
+            Triple(ProviderFilter.MET, "met") { searchMet(q) },
+            Triple(ProviderFilter.AIC, "aic") { searchAic(q, f, page) },
+            Triple(ProviderFilter.CLEVELAND, "cleveland") { searchCleveland(q, f, page) },
+            Triple(ProviderFilter.LOC, "loc") { searchLoc(q, f, page) },
+            Triple(ProviderFilter.EUROPEANA, "europeana") { searchEuropeana(q) },
+            Triple(ProviderFilter.VAM, "vam") { searchVam(q) },
+        )
+        return all
+            .filter { (p, _, _) ->
+                (f.provider == ProviderFilter.ALL || f.provider == p) &&
+                    (f.color.isEmpty() || p in COLOUR_AWARE) &&
+                    (f.license == LicenseFilter.ANY || p in LICENCE_AWARE)
+            }
+            .map { (_, name, run) -> name to run }
+    }
 
     suspend fun search(q: String, filters: Filters, page: Int): List<SearitchImage> =
         coroutineScope {
-            fun want(p: ProviderFilter) =
-                filters.provider == ProviderFilter.ALL || filters.provider == p
-
-            val defs = mutableListOf<Pair<String, suspend () -> List<SearitchImage>>>()
-            if (want(ProviderFilter.OPENVERSE))
-                defs += "openverse" to { searchOpenverse(q, filters, page) }
-            if (want(ProviderFilter.WIKIMEDIA))
-                defs += "wikimedia" to { searchWikimedia(q, filters, page) }
-            if (want(ProviderFilter.WALLHAVEN))
-                defs += "wallhaven" to { searchWallhaven(q, filters, page) }
-            if (want(ProviderFilter.FLICKR))
-                defs += "flickr" to { searchFlickr(q, filters, page) }
-            if (want(ProviderFilter.INATURALIST)) defs += "inaturalist" to { searchINaturalist(q) }
-            if (want(ProviderFilter.NASA)) defs += "nasa" to { searchNasa(q) }
-            if (want(ProviderFilter.MET)) defs += "met" to { searchMet(q) }
-            if (want(ProviderFilter.EUROPEANA)) defs += "europeana" to { searchEuropeana(q) }
-            if (want(ProviderFilter.VAM)) defs += "vam" to { searchVam(q) }
-
-            val lists = defs.filterNot { shouldSkip(it.first) }.map { (name, run) ->
+            val lists = providers(q, filters, page).filterNot { shouldSkip(it.first) }.map { (name, run) ->
                 async {
                     val r = runCatching { withTimeout(budgetFor(name)) { run() } }
                     recordResult(name, r.isSuccess)
@@ -463,12 +518,28 @@ object Api {
         return if (ext.equals("jpeg", true)) "jpg" else ext.lowercase()
     }
 
-    private suspend fun getJson(url: String, ms: Long = 6000): String? = try {
+    /**
+     * Fetches JSON text, or null when the source answered "no such thing" (4xx).
+     *
+     * Transport failures, timeouts and 5xx are raised on purpose: they mean the
+     * source is unreachable or broken, and the health breaker needs to see that
+     * rather than silently return an empty page.
+     */
+    private suspend fun getJson(url: String, ms: Long = 6000): String? {
         // Do not set User-Agent here: browsers forbid that header for Wasm Fetch.
         val res = http.get(url)
-        if (res.status.value in 200..299) res.bodyAsText() else null
-    } catch (e: Throwable) {
-        null
+        return when {
+            res.status.value in 200..299 -> res.bodyAsText()
+            res.status.value >= 500 -> error("HTTP ${res.status.value} from ${url.substringBefore('?')}")
+            else -> null
+        }
+    }
+
+    /** Like [getJson], but a transport or HTTP failure is raised instead of hidden. */
+    private suspend fun getTextOrThrow(url: String): String {
+        val res = http.get(url)
+        if (res.status.value !in 200..299) error("HTTP ${res.status.value} for $url")
+        return res.bodyAsText()
     }
 
     private inline fun <reified T> parseJson(text: String?): T? {
@@ -493,7 +564,16 @@ object Api {
     )
 
     @Serializable
-    private data class InatPhoto(val url: String = "", val attribution: String? = null)
+    private data class InatPhoto(
+        val url: String = "",
+        val attribution: String? = null,
+        // Present on observation photos; absent on some older records, which is
+        // why it is optional rather than assumed.
+        @SerialName("original_dimensions") val dims: InatDims? = null,
+    )
+
+    @Serializable
+    private data class InatDims(val width: Int = 0, val height: Int = 0)
 
     suspend fun searchINaturalist(q: String): List<SearitchImage> {
         val text = getJson(
@@ -512,7 +592,9 @@ object Api {
                 thumb = photo.url,
                 thumbFallback = photo.url,
                 full = photo.url.replace("/square.", "/original."),
-                width = 0, height = 0, filetype = "jpg",
+                width = photo.dims?.width ?: 0,
+                height = photo.dims?.height ?: 0,
+                filetype = "jpg",
                 sourceSite = "iNaturalist",
                 sourceUrl = "https://www.inaturalist.org/observations/${o.id}",
                 creator = photo.attribution,
@@ -703,6 +785,339 @@ object Api {
         }
     }
 
+
+    // ══════════════════════ Bing — the open web ═════════════════════════════
+    //
+    // Bing retired its keyed Image Search API, so there is no keyless JSON
+    // endpoint left. What does still answer without a key is the same fragment
+    // the Bing images page loads by itself (`/images/async`, `mmasync=1`): an
+    // HTML list where every card carries its media URL, its thumbnail, its
+    // source page and its "m" JSON blob.
+    //
+    // That endpoint supports real server-side filtering — `adlt=` for safe
+    // search, and `qft=filterui:color2-FGcls_*`, `filterui:aspect-*`,
+    // `filterui:imagesize-*` — so colour, orientation and size are answered by
+    // the index itself instead of being guessed at afterwards.
+    //
+    // It sends no CORS headers, so like Wallhaven and Flickr this source answers
+    // in the Android build and stays quiet in the browser one.
+
+    /** Bing's own colour names, one for one with the twelve swatches in Filters. */
+    private val BING_COLOR = mapOf(
+        "red" to "RED", "orange" to "ORANGE", "yellow" to "YELLOW", "green" to "GREEN",
+        "teal" to "TEAL", "blue" to "BLUE", "purple" to "PURPLE", "pink" to "PINK",
+        "brown" to "BROWN", "black" to "BLACK", "gray" to "GRAY", "white" to "WHITE",
+    )
+
+    private fun percentDecode(s: String): String {
+        val out = StringBuilder(s.length)
+        var i = 0
+        while (i < s.length) {
+            val c = s[i]
+            if (c == '%' && i + 2 < s.length) {
+                val v = s.substring(i + 1, i + 3).toIntOrNull(16)
+                if (v != null) {
+                    out.append(v.toChar())
+                    i += 3
+                    continue
+                }
+            }
+            out.append(if (c == '+') ' ' else c)
+            i++
+        }
+        return out.toString()
+    }
+
+    private fun unescapeHtml(s: String): String = s
+        .replace("&quot;", "\"").replace("&#34;", "\"")
+        .replace("&#39;", "'").replace("&apos;", "'")
+        .replace("&lt;", "<").replace("&gt;", ">")
+        .replace("&amp;", "&")
+
+    private data class WebHit(
+        val media: String,
+        val thumb: String?,
+        val title: String,
+        val page: String?,
+        val width: Int,
+        val height: Int,
+    )
+
+    /** Tolerant: try the card's `m` JSON first, then the media URLs in the links. */
+    private fun parseBingCards(html: String): List<WebHit> {
+        val out = mutableListOf<WebHit>()
+        val cards = Regex("m=\"(\\{[^\"]{20,}?\\})\"").findAll(html).toList()
+        for ((i, card) in cards.withIndex()) {
+            val body = unescapeHtml(card.groupValues[1])
+            val media = Regex("\"murl\":\"(.*?)\"").find(body)?.groupValues?.get(1) ?: continue
+            if (!media.startsWith("http")) continue
+            // The card body that follows carries the thumbnail and the printed
+            // "1920 x 1080" size; it ends where the next card begins.
+            val end = cards.getOrNull(i + 1)?.range?.first ?: html.length
+            val region = html.substring(card.range.last + 1, end)
+            // The thumbnail sits in raw HTML, so its query string is still
+            // entity-escaped — leave `&amp;` in place and the load fails.
+            val thumb = Regex("(https://th\\.bing\\.com/th/id/[^\"'\\s]+)").find(region)
+                ?.groupValues?.get(1)
+                ?.replace("&amp;", "&")
+            val dims = Regex("(\\d{2,5})\\s*[x\u00d7]\\s*(\\d{2,5})").find(region)
+            out += WebHit(
+                media = media,
+                thumb = thumb,
+                title = Regex("\"t\":\"(.*?)\"").find(body)?.groupValues?.get(1) ?: "",
+                page = Regex("\"purl\":\"(.*?)\"").find(body)?.groupValues?.get(1),
+                width = dims?.groupValues?.get(1)?.toIntOrNull() ?: 0,
+                height = dims?.groupValues?.get(2)?.toIntOrNull() ?: 0,
+            )
+        }
+        if (out.isNotEmpty()) return out
+
+        // Fallback shape: no `m` blobs, but every detail link still carries
+        // mediaurl=…&expw=…&exph=…
+        Regex("mediaurl=([^\"&]+)").findAll(html).forEach { m ->
+            val media = percentDecode(m.groupValues[1]).replace("&amp;", "&")
+            if (!media.startsWith("http")) return@forEach
+            val window = html.substring(m.range.last, minOf(html.length, m.range.last + 400))
+            val w = Regex("expw=(\\d+)").find(window)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val h = Regex("exph=(\\d+)").find(window)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            out += WebHit(media, null, "", null, w, h)
+        }
+        return out
+    }
+
+    private suspend fun searchBing(q: String, f: Filters, page: Int): List<SearitchImage> {
+        val count = 35
+        val first = (page - 1) * count + 1
+        val qft = buildString {
+            BING_COLOR[f.color]?.let { append("+filterui:color2-FGcls_").append(it) }
+            when (f.aspect) {
+                AspectFilter.WIDE -> append("+filterui:aspect-wide")
+                AspectFilter.TALL -> append("+filterui:aspect-tall")
+                AspectFilter.SQUARE -> append("+filterui:aspect-square")
+                AspectFilter.ANY -> Unit
+            }
+            when (f.size) {
+                SizeFilter.SMALL -> append("+filterui:imagesize-small")
+                SizeFilter.MEDIUM -> append("+filterui:imagesize-medium")
+                SizeFilter.LARGE -> append("+filterui:imagesize-large")
+                SizeFilter.ANY -> Unit
+            }
+        }
+        val url = "https://www.bing.com/images/async" +
+            "?q=" + q.encodeURLParameter() +
+            "&count=$count&first=$first&mmasync=1" +
+            "&adlt=" + (if (f.safe) "strict" else "off") +
+            (if (qft.isEmpty()) "" else "&qft=$qft")
+
+        // Raised on purpose: if Bing starts refusing the request, the health
+        // breaker should learn that instead of re-asking on every search.
+        val html = getTextOrThrow(url)
+        return parseBingCards(html).mapNotNull { hit ->
+            val ext = extOfUrl(hit.media)
+            // Bing indexes pages, not files: skip anything that isn't a usable
+            // bitmap, and honour an explicit file-type filter for real.
+            if (ext !in BITMAP_TYPES) return@mapNotNull null
+            val typeOk = when (f.type) {
+                TypeFilter.ANY -> true
+                TypeFilter.TRANSPARENT -> ext == "png" || ext == "svg"
+                else -> ext == f.type.name.lowercase()
+            }
+            if (!typeOk) return@mapNotNull null
+            val host = hit.page?.let { p ->
+                p.substringAfter("://", p).substringBefore('/').removePrefix("www.")
+            }
+            SearitchImage(
+                id = "bing:" + hit.media.hashCode(),
+                provider = "bing",
+                title = hit.title.ifBlank { host ?: "Web image" }.take(140),
+                thumb = hit.thumb ?: hit.media,
+                preview = hit.media,
+                full = hit.media,
+                width = hit.width,
+                height = hit.height,
+                filetype = ext,
+                sourceSite = "Bing",
+                sourceUrl = hit.page ?: hit.media,
+                creator = host,
+                license = null,
+                // The page host is a real hint for similarity: pictures of the
+                // same subject cluster on the same sites.
+                tags = listOfNotNull(host),
+            )
+        }
+    }
+
+    private val BITMAP_TYPES = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "avif", "svg")
+
+    // ══════════════════ art museums on open-access APIs ═════════════════════
+
+    @Serializable
+    private data class AicResponse(val data: List<AicArt> = emptyList())
+
+    @Serializable
+    private data class AicArt(
+        val id: Long = 0,
+        val title: String? = null,
+        @SerialName("image_id") val imageId: String? = null,
+        @SerialName("artist_title") val artistTitle: String? = null,
+        @SerialName("date_display") val dateDisplay: String? = null,
+        @SerialName("is_public_domain") val publicDomain: Boolean? = null,
+        val thumbnail: AicThumb? = null,
+    )
+
+    @Serializable
+    private data class AicThumb(val width: Int = 0, val height: Int = 0)
+
+    /** IIIF rendition at a given width — the museum's own image server. */
+    private fun aicUrl(imageId: String, width: Int): String =
+        "https://www.artic.edu/iiif/2/$imageId/full/${width.coerceAtLeast(64)},/0/default.jpg"
+
+    private suspend fun searchAic(q: String, f: Filters, page: Int): List<SearitchImage> {
+        val url = "https://api.artic.edu/api/v1/artworks/search" +
+            "?q=" + q.encodeURLParameter() +
+            "&limit=20&page=$page" +
+            // Only works that are genuinely free of restrictions come back.
+            "&query[term][is_public_domain]=true" +
+            "&fields=id,title,image_id,artist_title,date_display,is_public_domain,thumbnail"
+        val res = parseJson<AicResponse>(getJson(url)) ?: return emptyList()
+        return res.data.mapNotNull { a ->
+            val imageId = a.imageId ?: return@mapNotNull null
+            val w = a.thumbnail?.width ?: 0
+            val h = a.thumbnail?.height ?: 0
+            if (w <= 0 || h <= 0) return@mapNotNull null
+            SearitchImage(
+                id = "aic:${a.id}",
+                provider = "aic",
+                title = a.title?.takeIf { it.isNotBlank() } ?: "Untitled",
+                thumb = aicUrl(imageId, minOf(400, w)),
+                preview = aicUrl(imageId, minOf(1000, w)),
+                full = aicUrl(imageId, minOf(1686, w)),
+                width = w,
+                height = h,
+                filetype = "jpg",
+                sourceSite = "Art Institute of Chicago",
+                sourceUrl = "https://www.artic.edu/artworks/${a.id}",
+                creator = a.artistTitle,
+                license = "Public domain",
+                tags = listOfNotNull(a.artistTitle?.lowercase(), a.dateDisplay),
+            )
+        }
+    }
+
+    @Serializable
+    private data class CmaResponse(val data: List<CmaArt> = emptyList())
+
+    @Serializable
+    private data class CmaArt(
+        val id: Long = 0,
+        val title: String? = null,
+        val type: String? = null,
+        @SerialName("creation_date") val creationDate: String? = null,
+        @SerialName("share_license_status") val license: String? = null,
+        @SerialName("accession_number") val accessionNumber: String? = null,
+        val images: CmaImages? = null,
+        val creators: List<CmaCreator> = emptyList(),
+    )
+
+    @Serializable
+    private data class CmaImages(val web: CmaSize? = null, val print: CmaSize? = null)
+
+    @Serializable
+    private data class CmaSize(
+        val url: String? = null,
+        val width: String? = null,
+        val height: String? = null,
+    )
+
+    @Serializable
+    private data class CmaCreator(val description: String? = null, val role: String? = null)
+
+    private suspend fun searchCleveland(q: String, f: Filters, page: Int): List<SearitchImage> {
+        val skip = (page - 1) * 20
+        val url = "https://openaccess-api.clevelandart.org/api/artworks/" +
+            "?q=" + q.encodeURLParameter() +
+            "&has_image=1&limit=20&skip=$skip" +
+            "&fields=id,title,type,creation_date,share_license_status,accession_number,images,creators"
+        val res = parseJson<CmaResponse>(getJson(url)) ?: return emptyList()
+        return res.data.mapNotNull { a ->
+            val print = a.images?.print ?: a.images?.web ?: return@mapNotNull null
+            val full = print.url ?: return@mapNotNull null
+            SearitchImage(
+                id = "cleveland:${a.id}",
+                provider = "cleveland",
+                title = a.title?.takeIf { it.isNotBlank() } ?: "Untitled",
+                thumb = a.images?.web?.url ?: full,
+                preview = full,
+                full = full,
+                width = print.width?.toIntOrNull() ?: 0,
+                height = print.height?.toIntOrNull() ?: 0,
+                filetype = extOfUrl(full).ifEmpty { "jpg" },
+                sourceSite = "Cleveland Museum of Art",
+                sourceUrl = "https://www.clevelandart.org/art/${a.accessionNumber ?: a.id}",
+                creator = a.creators.firstOrNull()?.description,
+                license = if (a.license == "CC0") "CC0" else a.license,
+                tags = listOfNotNull(a.type?.lowercase(), a.creationDate),
+            )
+        }
+    }
+
+    @Serializable
+    private data class LocResponse(val results: List<LocItem> = emptyList())
+
+    @Serializable
+    private data class LocItem(
+        val id: String? = null,
+        val title: String? = null,
+        @SerialName("image_url") val imageUrl: List<String> = emptyList(),
+        @SerialName("service_low") val serviceLow: String? = null,
+        @SerialName("service_medium") val serviceMedium: String? = null,
+        @SerialName("thumb_gallery") val thumbGallery: String? = null,
+        @SerialName("rights_advisory") val rights: String? = null,
+        val contributor: List<String> = emptyList(),
+        val subject: List<String> = emptyList(),
+        val item: LocItemDetail? = null,
+    )
+
+    @Serializable
+    private data class LocItemDetail(
+        val title: String? = null,
+        val created: String? = null,
+    )
+
+    /** The LoC sizes are listed inside the URL fragment: `…07149v.jpg#h=873&w=1024`. */
+    private fun locWidth(url: String): Int =
+        Regex("[#&]w=(\\d+)").find(url)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+
+    private suspend fun searchLoc(q: String, f: Filters, page: Int): List<SearitchImage> {
+        val url = "https://www.loc.gov/photos/" +
+            "?q=" + q.encodeURLParameter() +
+            "&fo=json&c=20&sp=$page&at=results"
+        val res = parseJson<LocResponse>(getJson(url)) ?: return emptyList()
+        return res.results.mapNotNull { r ->
+            val best = r.imageUrl.maxByOrNull { locWidth(it) } ?: return@mapNotNull null
+            val full = best.substringBefore('#')
+            val width = locWidth(best)
+            val height = Regex("[#&]h=(\\d+)").find(best)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val itemPage = r.id ?: full
+            SearitchImage(
+                id = "loc:" + (r.id ?: full).hashCode(),
+                provider = "loc",
+                title = (r.title ?: r.item?.title)?.takeIf { it.isNotBlank() } ?: "Untitled",
+                thumb = r.thumbGallery ?: r.serviceLow ?: full,
+                preview = r.serviceMedium ?: full,
+                full = full,
+                width = width,
+                height = height,
+                filetype = extOfUrl(full).ifEmpty { "jpg" },
+                sourceSite = "Library of Congress",
+                sourceUrl = itemPage,
+                creator = r.contributor.firstOrNull(),
+                license = r.rights,
+                tags = r.subject.take(6).map { it.substringBefore('-').lowercase() },
+            )
+        }
+    }
+
     // --------------------------------------------------------- smart safety & anti-ai ----
 
     private val aiExact = setOf(
@@ -758,19 +1173,7 @@ object Api {
      * interleaved across sources so the first screen is a real mix of sites.
      */
     fun searchStream(q: String, filters: Filters, page: Int): Flow<List<SearitchImage>> = channelFlow {
-        fun want(p: ProviderFilter) = filters.provider == ProviderFilter.ALL || filters.provider == p
-        val defs = mutableListOf<Pair<String, suspend () -> List<SearitchImage>>>()
-        if (want(ProviderFilter.OPENVERSE)) defs += "openverse" to { searchOpenverse(q, filters, page) }
-        if (want(ProviderFilter.WIKIMEDIA)) defs += "wikimedia" to { searchWikimedia(q, filters, page) }
-        if (want(ProviderFilter.WALLHAVEN)) defs += "wallhaven" to { searchWallhaven(q, filters, page) }
-        if (want(ProviderFilter.FLICKR)) defs += "flickr" to { searchFlickr(q, filters, page) }
-        // The direct sources (billion-image catalogue) stream in individually.
-        if (want(ProviderFilter.INATURALIST)) defs += "inaturalist" to { searchINaturalist(q) }
-        if (want(ProviderFilter.NASA)) defs += "nasa" to { searchNasa(q) }
-        if (want(ProviderFilter.MET)) defs += "met" to { searchMet(q) }
-        if (want(ProviderFilter.EUROPEANA)) defs += "europeana" to { searchEuropeana(q) }
-        if (want(ProviderFilter.VAM)) defs += "vam" to { searchVam(q) }
-        val active = defs.filterNot { shouldSkip(it.first) }
+        val active = providers(q, filters, page).filterNot { shouldSkip(it.first) }
         if (active.isEmpty()) return@channelFlow
 
         val lock = Mutex()
@@ -813,6 +1216,8 @@ object Api {
     // --------------------------------------------------------- related ----
 
     suspend fun related(img: SearitchImage): List<SearitchImage> {
+        // Openverse exposes a related endpoint keyed on the image itself — the
+        // closest thing to "more like this" any of these APIs offers.
         if (img.provider == "openverse") {
             val rawId = img.id.substringAfter(':')
             runCatching {
@@ -822,15 +1227,51 @@ object Api {
                 res.results.map { it.toImage() }
             }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
         }
-        // Smart fallback: query the image's real semantic tags (provider
-        // metadata), and only fall back to title words when it has none.
-        val words = if (img.tags.isNotEmpty()) img.tags.take(3).joinToString(" ") else img.title
-            .replace(Regex("[_\\-.]"), " ")
-            .split(Regex("\\s+"))
-            .filter { it.length > 2 && !it.all(Char::isDigit) }
-            .take(4)
-            .joinToString(" ")
+
+        // Otherwise the metadata is the only signal there is, so use the part of
+        // it that actually names the subject: the source's own tags, and only
+        // when there are none, the words in the title.
+        val words = relatedKeywords(img)
         if (words.isEmpty()) return emptyList()
-        return search(words, Filters(), 1).filter { it.id != img.id }.take(18)
+        return search(words, Filters(), 1)
+            .filter { it.id != img.id && it.full != img.full }
+            .take(24)
+    }
+
+    /** Words that identify a subject rather than describe a file. */
+    private val NOISE = setOf(
+        "the", "and", "with", "from", "for", "this", "that", "photo", "photos", "image",
+        "images", "picture", "pictures", "untitled", "stock", "photography", "of", "in",
+        "on", "at", "by", "a", "an", "to", "public", "domain", "collection", "museum",
+        "jpg", "png", "file", "art", "print",
+    )
+
+    /**
+     * The words a "similar images" search is built from. Public so the detail
+     * screen can show them instead of leaving the user guessing.
+     */
+    fun relatedKeywords(img: SearitchImage): String {
+        val tags = img.tags
+            .map { it.substringBefore('-').trim().lowercase() }
+            .filter { it.length in 3..24 && it !in NOISE && it.any(Char::isLetter) }
+            .distinct()
+        if (tags.isNotEmpty()) return tags.take(2).joinToString(" ")
+
+        // Museum titles put the subject first: "Cat Coffin", "Moonrise", "Lion
+        // (One of a Pair)" — trim the catalogue tail before splitting.
+        val title = img.title
+            .substringBefore('(')
+            .substringBefore(',')
+            .substringBefore('—')
+            .substringBefore('|')
+            .trim()
+        val words = title
+            .replace(Regex("[_\\-./:]"), " ")
+            .split(Regex("\\s+"))
+            .map { it.lowercase().trim() }
+            .filter { it.length > 2 && it !in NOISE && it.any(Char::isLetter) }
+            .distinct()
+            .take(3)
+        return words.joinToString(" ")
     }
 }

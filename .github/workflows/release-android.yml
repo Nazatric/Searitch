@@ -6,11 +6,13 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v0.8"
+        default: "v0.9"
   push:
     branches:
+      # the working branch Arena is on; keep the last one too so a rebase or a
+      # branch switch doesn't silently stop the build
+      - "arena/b658bb31-searitch"
       - "arena/89730b10-searitch"
-      - "arena/1b4ed963-searitch"
     paths:
       - "kotlin-app/**"
       - ".github/workflows/release-android.yml"
@@ -176,9 +178,9 @@ jobs:
           for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk" | sort); do
             base=$(basename "$apk")
             case "$base" in
-              *arm64*)   name="Searitch-v0.8-arm64-v8a.apk" ;;
-              *armeabi*) name="Searitch-v0.8-armeabi-v7a.apk" ;;
-              *)         name="Searitch-v0.8-$base" ;;
+              *arm64*)   name="Searitch-v0.9-arm64-v8a.apk" ;;
+              *armeabi*) name="Searitch-v0.9-armeabi-v7a.apk" ;;
+              *)         name="Searitch-v0.9-$base" ;;
             esac
             echo "--- $base -> $name"
 
@@ -230,28 +232,52 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || 'v0.8' }}
+          TAG: ${{ github.event.inputs.tag || 'v0.9' }}
         run: |
           set -euo pipefail
           cat > notes.md <<'EOF'
-          ### v0.8 — the status bar belongs to the hide
+          ### v0.9 — thirteen sources, filters that mean what they say
 
-          `versionCode 8` · `versionName 1.5.0`
+          `versionCode 9` · `versionName 1.6.0`
 
-          **Settings has a real top edge**
+          **Bing, and three more museums**
 
-          The clock and battery were floating over bare window at the top of the
-          sheet, which is why they looked borrowed from another app. Settings now
-          opens on a leather strap — same hide, same sheen, same saddle stitching
-          as the search bar — that runs up behind the status bar. The page meets
-          the top of the screen square, with no grab pill over a flat gutter.
+          Bing now searches the open web: its images feed answers without a key,
+          and it takes the colour, orientation and size filters as real query
+          parameters instead of keywords. Added alongside it are the Art
+          Institute of Chicago, the Cleveland Museum of Art and the Library of
+          Congress — all keyless, all public domain or CC0. Thirteen sources in
+          total, still queried in parallel and streamed as they answer.
+
+          **A colour filter that returns that colour**
+
+          A source is only searched when it can honour the filter. Picking a
+          colour now searches Bing, Wallhaven and Openverse — the three that
+          really filter by colour — and leaves out the sources with no colour
+          metadata, rather than returning unrelated pictures. A licence filter
+          does the same in reverse: only sources that publish a licence are
+          asked, so nothing is passed off as commercial use when it isn't.
+
+          **Similar images that use the subject, not the filename**
+
+          Related sets are built from the source's own tags, falling back to the
+          subject words of the title with catalogue noise — "Untitled", "photo",
+          "public domain" — stripped out. Museum titles no longer search for
+          "one of a pair".
+
+          **A source that fails is now a source that's skipped**
+
+          Transport errors and 5xx responses count against a source again; before,
+          they were swallowed and a broken endpoint was re-queried on every
+          search. Non-200 responses from a source's search are no longer parsed as
+          "no results".
 
           ### Assets
 
           | File | For |
           | --- | --- |
-          | `Searitch-v0.8-arm64-v8a.apk` | almost every phone since 2017 |
-          | `Searitch-v0.8-armeabi-v7a.apk` | older 32-bit devices |
+          | `Searitch-v0.9-arm64-v8a.apk` | almost every phone since 2017 |
+          | `Searitch-v0.9-armeabi-v7a.apk` | older 32-bit devices |
           | `searitch-release.keystore` | signing key — password `searitch2026`, alias `searitch` |
           | `SHA256SUMS.txt` | checksums |
           EOF
@@ -261,7 +287,7 @@ jobs:
             --title "Searitch $TAG" \
             --notes-file notes.md \
             --target "$GITHUB_SHA" \
-            out/Searitch-v0.8-arm64-v8a.apk \
-            out/Searitch-v0.8-armeabi-v7a.apk \
+            out/Searitch-v0.9-arm64-v8a.apk \
+            out/Searitch-v0.9-armeabi-v7a.apk \
             out/searitch-release.keystore \
             out/SHA256SUMS.txt

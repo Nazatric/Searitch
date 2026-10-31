@@ -156,7 +156,7 @@ def compose() -> Image.Image:
     d.line([(text_x + 4, 272 + oy), (text_x + 4 + 268, 272 + oy)], fill=BRASS, width=2)
     d.line([(text_x + 4, 275 + oy), (text_x + 4 + 268, 275 + oy)], fill=(0, 0, 0, 90), width=1)
 
-    tracked(d, (text_x + 4, 296 + oy), "IMAGE SEARCH, BOUND IN LEATHER", tagline_font, CREAM_SOFT, 3.4)
+    tracked(d, (text_x + 4, 296 + oy), "IMAGE SEARCH · THIRTEEN SOURCES · NO KEYS", tagline_font, CREAM_SOFT, 3.4)
 
     return img
 

@@ -1,8 +1,8 @@
-<img src="docs/banner.png" alt="Searitch — image search, bound in leather" width="100%">
+<img src="docs/banner.png" alt="Searitch" width="100%">
 
-**Search anything.** Images from roughly a billion licensed pictures across nine
-keyless sources — one Kotlin codebase, a native Android build and a browser
-build, wrapped in leather, paper and brass.
+**Search anything.** One query, thirteen image sources answering at once — the
+open web alongside open-access libraries and museums. No API keys, no accounts,
+no server in between. One Kotlin codebase builds the Android app and the web app.
 
 [![Latest release](https://img.shields.io/github/v/release/Nazatric/Searitch?label=release&color=C69B3F)](../../releases/latest)
 [![Android CI](https://github.com/Nazatric/Searitch/actions/workflows/release-android.yml/badge.svg)](../../actions/workflows/release-android.yml)
@@ -20,20 +20,56 @@ build, wrapped in leather, paper and brass.
 
 ## What it does
 
-Type a word, get pictures. Nine sources are queried at once and their results
+Type a word, get pictures. Thirteen sources are queried at once and their results
 stream in as each one answers, so the first photos appear before the slowest
 site has finished.
 
 | | |
 | --- | --- |
-| **Nine sources** | Openverse, Wikimedia Commons, Wallhaven, Flickr, iNaturalist, NASA, The Met, Europeana, the V&A |
+| **Thirteen sources** | Bing (full web), Openverse, Wikimedia Commons, Wallhaven, Flickr, iNaturalist, NASA, The Met, Art Institute of Chicago, Cleveland Museum of Art, Library of Congress, Europeana, the V&A |
 | **Filters** | file type, orientation, size, twelve-colour palette, licence, source, safe search, anti-AI |
 | **Smart facets** | the app counts what it actually got back and offers drill-downs with real numbers — *JPG only 12*, *High-res 7* — instead of guessing |
 | **Detail view** | full image, creator, licence, dimensions, download, similar images |
 | **Downloads** | streamed straight into `Download/Searitch` through MediaStore on Android 10+, no permission needed |
 
-No accounts, no keys, no server in the middle. Each request goes from your device
-to the source.
+Each request goes from your device straight to the source.
+
+### Sources
+
+| Source | What it is | Colour | Licence | Safe search |
+| --- | --- | --- | --- | --- |
+| Bing | the open web | yes, `filterui:color2` | no | `adlt=strict` |
+| Openverse | CC index of 50+ sites | as a search word | yes | mature flag |
+| Wikimedia Commons | 100M+ media files | no | yes | curated |
+| Wallhaven | community wallpapers | yes, `colors=` | no | `purity` |
+| Flickr | public photo feed | no | no | — (skipped) |
+| iNaturalist | observation photos | no | yes | curated |
+| NASA | image library | no | public domain | curated |
+| The Met | museum collection | no | yes | curated |
+| Art Institute of Chicago | public-domain works | no | public domain | curated |
+| Cleveland Museum of Art | CC0 works | no | CC0 | curated |
+| Library of Congress | prints & photographs | no | yes | curated |
+| Europeana | European heritage | no | yes | curated |
+| V&A | museum collection | no | CC0 | curated |
+
+That table is the contract the filters work to, not decoration:
+
+- **A source that can't honour a filter isn't searched.** Pick a colour and only
+  Bing, Wallhaven and Openverse are asked — the three that really filter by
+  colour. Pick a licence and the sources that publish no licence (Bing,
+  Wallhaven, Flickr) drop out rather than have "commercial use" printed next to
+  them.
+- **Orientation and size are tested against reported dimensions.** A picture
+  whose size is unknown is excluded while one of those filters is on, so
+  *Landscape* and *Large* mean what they say.
+- **Safe search switches off what it can't verify.** Flickr's public feed has no
+  rating metadata, so it is skipped while strict safe search is on instead of
+  being trusted.
+
+> [!NOTE]
+> Bing, Wallhaven and Flickr send no CORS headers, so those three answer in the
+> Android build only and stay quiet in the browser build. Everything else works
+> in both.
 
 ## Materials
 
@@ -168,7 +204,7 @@ Android-only build.
 ```text
 kotlin-app/composeApp/src/
   commonMain/kotlin/app/searitch/
-    Api.kt            nine sources, streaming aggregation, related images
+    Api.kt            thirteen sources, streaming aggregation, filters, related
     App.kt            back stack, screen transitions, session host
     SearchScreen.kt   results grid, facets, filter sheet
     DetailScreen.kt   hero image, metadata, download, similar

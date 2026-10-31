@@ -48,10 +48,20 @@ enum class LicenseFilter(val label: String) {
 }
 
 enum class ProviderFilter(val label: String) {
-    ALL("All sources"), OPENVERSE("Openverse"),
-    WIKIMEDIA("Wikimedia + museums"), WALLHAVEN("Wallhaven"), FLICKR("Flickr (Safe Search off only)"),
-    INATURALIST("iNaturalist"), NASA("NASA"), MET("The Met"),
-    EUROPEANA("Europeana"), VAM("V&A Museum")
+    ALL("All sources"),
+    BING("Bing — full web"),
+    OPENVERSE("Openverse"),
+    WIKIMEDIA("Wikimedia"),
+    WALLHAVEN("Wallhaven"),
+    FLICKR("Flickr"),
+    INATURALIST("iNaturalist"),
+    NASA("NASA"),
+    MET("The Met"),
+    AIC("Art Institute of Chicago"),
+    CLEVELAND("Cleveland Museum"),
+    LOC("Library of Congress"),
+    EUROPEANA("Europeana"),
+    VAM("V&A Museum"),
 }
 
 data class ColorOption(val key: String, val label: String, val hex: Long, val wallhaven: String)
