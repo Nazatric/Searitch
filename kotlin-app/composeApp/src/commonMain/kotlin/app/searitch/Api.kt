@@ -154,8 +154,14 @@ object Api {
     private fun colorTerm(f: Filters): String =
         COLOR_OPTIONS.firstOrNull { it.key == f.color }?.let { " ${it.key}" } ?: ""
 
+    /**
+     * Orientation and size are checked against the dimensions the source
+     * actually reported. An image whose size is unknown is left out when the
+     * filter is on — "Landscape" then means landscape, not "probably".
+     */
     private fun matchesAspect(img: SearitchImage, aspect: AspectFilter): Boolean {
-        if (aspect == AspectFilter.ANY || img.width == 0 || img.height == 0) return true
+        if (aspect == AspectFilter.ANY) return true
+        if (img.width <= 0 || img.height <= 0) return false
         val r = img.width.toDouble() / img.height
         return when (aspect) {
             AspectFilter.WIDE -> r >= 1.2
@@ -165,7 +171,8 @@ object Api {
     }
 
     private fun matchesSize(img: SearitchImage, size: SizeFilter): Boolean {
-        if (size == SizeFilter.ANY || img.width == 0 || img.height == 0) return true
+        if (size == SizeFilter.ANY) return true
+        if (img.width <= 0 || img.height <= 0) return false
         val mp = img.width.toDouble() * img.height / 1_000_000
         return when (size) {
             SizeFilter.SMALL -> mp < 1
@@ -557,7 +564,16 @@ object Api {
     )
 
     @Serializable
-    private data class InatPhoto(val url: String = "", val attribution: String? = null)
+    private data class InatPhoto(
+        val url: String = "",
+        val attribution: String? = null,
+        // Present on observation photos; absent on some older records, which is
+        // why it is optional rather than assumed.
+        @SerialName("original_dimensions") val dims: InatDims? = null,
+    )
+
+    @Serializable
+    private data class InatDims(val width: Int = 0, val height: Int = 0)
 
     suspend fun searchINaturalist(q: String): List<SearitchImage> {
         val text = getJson(
@@ -576,7 +592,9 @@ object Api {
                 thumb = photo.url,
                 thumbFallback = photo.url,
                 full = photo.url.replace("/square.", "/original."),
-                width = 0, height = 0, filetype = "jpg",
+                width = photo.dims?.width ?: 0,
+                height = photo.dims?.height ?: 0,
+                filetype = "jpg",
                 sourceSite = "iNaturalist",
                 sourceUrl = "https://www.inaturalist.org/observations/${o.id}",
                 creator = photo.attribution,
@@ -1213,7 +1231,7 @@ object Api {
         // Otherwise the metadata is the only signal there is, so use the part of
         // it that actually names the subject: the source's own tags, and only
         // when there are none, the words in the title.
-        val words = relatedQuery(img)
+        val words = relatedKeywords(img)
         if (words.isEmpty()) return emptyList()
         return search(words, Filters(), 1)
             .filter { it.id != img.id && it.full != img.full }
@@ -1228,7 +1246,11 @@ object Api {
         "jpg", "png", "file", "art", "print",
     )
 
-    private fun relatedQuery(img: SearitchImage): String {
+    /**
+     * The words a "similar images" search is built from. Public so the detail
+     * screen can show them instead of leaving the user guessing.
+     */
+    fun relatedKeywords(img: SearitchImage): String {
         val tags = img.tags
             .map { it.substringBefore('-').trim().lowercase() }
             .filter { it.length in 3..24 && it !in NOISE && it.any(Char::isLetter) }
@@ -1240,7 +1262,7 @@ object Api {
         val title = img.title
             .substringBefore('(')
             .substringBefore(',')
-            .substringBefore('\u2014')
+            .substringBefore('—')
             .substringBefore('|')
             .trim()
         val words = title

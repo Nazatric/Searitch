@@ -590,7 +590,19 @@ private fun FilterSheet(
         ) {
             FilterSection("FILE TYPE", TypeFilter.entries, draft.type, { it.label }) { onChange(draft.copy(type = it)) }
             FilterSection("ORIENTATION", AspectFilter.entries, draft.aspect, { it.label }) { onChange(draft.copy(aspect = it)) }
-            FilterSection("SIZE", SizeFilter.entries, draft.size, { it.label }) { onChange(draft.copy(size = it)) }
+            Column {
+                FilterSection("SIZE", SizeFilter.entries, draft.size, { it.label }) {
+                    onChange(draft.copy(size = it))
+                }
+                Text(
+                    "Checked against the dimensions the source reports. A picture " +
+                        "whose size is unknown is left out rather than guessed at, so " +
+                        "Landscape and Large mean exactly that.",
+                    color = Ink.faint,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 5.dp),
+                )
+            }
             Column {
                 SectionLabel("COLOR")
                 Text(

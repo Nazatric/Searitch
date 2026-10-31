@@ -34,6 +34,43 @@ site has finished.
 
 Each request goes from your device straight to the source.
 
+### Sources
+
+| Source | What it is | Colour | Licence | Safe search |
+| --- | --- | --- | --- | --- |
+| Bing | the open web | yes, `filterui:color2` | no | `adlt=strict` |
+| Openverse | CC index of 50+ sites | as a search word | yes | mature flag |
+| Wikimedia Commons | 100M+ media files | no | yes | curated |
+| Wallhaven | community wallpapers | yes, `colors=` | no | `purity` |
+| Flickr | public photo feed | no | no | — (skipped) |
+| iNaturalist | observation photos | no | yes | curated |
+| NASA | image library | no | public domain | curated |
+| The Met | museum collection | no | yes | curated |
+| Art Institute of Chicago | public-domain works | no | public domain | curated |
+| Cleveland Museum of Art | CC0 works | no | CC0 | curated |
+| Library of Congress | prints & photographs | no | yes | curated |
+| Europeana | European heritage | no | yes | curated |
+| V&A | museum collection | no | CC0 | curated |
+
+That table is the contract the filters work to, not decoration:
+
+- **A source that can't honour a filter isn't searched.** Pick a colour and only
+  Bing, Wallhaven and Openverse are asked — the three that really filter by
+  colour. Pick a licence and the sources that publish no licence (Bing,
+  Wallhaven, Flickr) drop out rather than have "commercial use" printed next to
+  them.
+- **Orientation and size are tested against reported dimensions.** A picture
+  whose size is unknown is excluded while one of those filters is on, so
+  *Landscape* and *Large* mean what they say.
+- **Safe search switches off what it can't verify.** Flickr's public feed has no
+  rating metadata, so it is skipped while strict safe search is on instead of
+  being trusted.
+
+> [!NOTE]
+> Bing, Wallhaven and Flickr send no CORS headers, so those three answer in the
+> Android build only and stay quiet in the browser build. Everything else works
+> in both.
+
 ## Materials
 
 The UI is not a skin over stock Material components. Every surface is drawn from

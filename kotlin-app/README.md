@@ -39,6 +39,12 @@ parallel and emitted the moment it answers. The opening batch is gathered for
 320 ms and interleaved so the first screen is a real mix of sites, not one
 source. A source that fails twice is skipped for five requests.
 
+`Api.providers()` is the single place that decides which sources a query
+touches. Filters are never simulated: a source that cannot honour one is left
+out of that search. `COLOUR_AWARE` and `LICENCE_AWARE` are the two lists that
+make that decision, and the detail screen shows the keywords `relatedKeywords()`
+chose, so a "similar images" set can be explained rather than guessed at.
+
 **State** — a `SearchSession` owns results, paging, scroll offset and errors, and
 lives in a `SessionHost` above the navigation graph. That's what stops Back from
 re-running a search. `SettingsState` is a single observable object that persists

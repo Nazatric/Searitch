@@ -344,18 +344,31 @@ fun DetailScreen(
             }
 
             if (settings.related) {
+                // Say what it searched for: the subject words it took from this
+                // image's tags, or from its title when it has none. A plain call,
+                // not `remember` — the grid's content lambda isn't composable.
+                val keywords = Api.relatedKeywords(img)
                 item(span = StaggeredGridItemSpan.FullLine, key = "similar") {
-                    Text(
-                        "SIMILAR IMAGES",
-                        style = TextStyle(
-                            color = Ink.onLeather,
-                            fontFamily = cinzel(),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            letterSpacing = 3.sp,
-                        ),
-                        modifier = Modifier.padding(top = 14.dp, bottom = 2.dp, start = 2.dp),
-                    )
+                    Column(Modifier.padding(top = 14.dp, bottom = 2.dp, start = 2.dp)) {
+                        Text(
+                            "SIMILAR IMAGES",
+                            style = TextStyle(
+                                color = Ink.onLeather,
+                                fontFamily = cinzel(),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                letterSpacing = 3.sp,
+                            ),
+                        )
+                        if (keywords.isNotEmpty()) {
+                            Text(
+                                "matching “$keywords”",
+                                color = Ink.onLeatherSoft,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(top = 3.dp),
+                            )
+                        }
+                    }
                 }
 
                 when (val rel = related) {
@@ -364,7 +377,11 @@ fun DetailScreen(
                         if (rel.isEmpty()) {
                             item(span = StaggeredGridItemSpan.FullLine, key = "none") {
                                 Text(
-                                    "No similar images found for this one.",
+                                    if (keywords.isEmpty()) {
+                                        "No similar images found for this one."
+                                    } else {
+                                        "Nothing came back for “$keywords”."
+                                    },
                                     color = Ink.onLeatherSoft,
                                     fontSize = 13.sp,
                                     modifier = Modifier.padding(6.dp),
