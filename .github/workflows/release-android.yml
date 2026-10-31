@@ -153,7 +153,7 @@ jobs:
             "$BT/apksigner" sign --ks out/searitch-release.keystore \
               --ks-pass pass:searitch2026 --key-pass pass:searitch2026 \
               --ks-key-alias searitch --out "out/$name" "out/aligned-$base"
-            "$BT/apksigner" verify --verbose "out/$name" > "out/sig-$base.txt" 2>&1
+            "$BT/apksigner" verify --verbose --print-certs "out/$name" > "out/sig-$base.txt" 2>&1
             sig_ok=yes; "$BT/apksigner" verify "out/$name" || sig_ok=no
             "$BT/aapt2" dump badging "$apk" > "out/badging-$base.txt" 2>/dev/null || true
 
