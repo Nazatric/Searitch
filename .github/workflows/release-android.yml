@@ -1,0 +1,156 @@
+name: Build & Release Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag"
+        required: true
+        default: "v0.1"
+  push:
+    branches:
+      - "arena/1b4ed963-searitch"
+    paths:
+      - ".github/workflows/release-android.yml"
+
+permissions:
+  contents: write
+
+env:
+  ZIP_NAME: searitch-universal-image-search-app.zip
+  APP_DIR: ${{ github.workspace }}/build-src/kotlin-app
+
+jobs:
+  build:
+    name: Build arm64-v8a + armeabi-v7a APKs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Unpack app source from repository zip
+        run: |
+          set -euo pipefail
+          mkdir -p build-src
+          unzip -qo "$ZIP_NAME" -d build-src
+          chmod +x "$APP_DIR/gradlew"
+          ls -la "$APP_DIR"
+
+      - name: Ensure Android SDK components
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "SDK=$SDK"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --install \
+            "platforms;android-35" "build-tools;35.0.0" "platform-tools" > /dev/null
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+
+      # ABI splits are injected through an init script so the app's own
+      # build files in the zip stay completely unmodified.
+      - name: Write ABI split init script
+        run: |
+          cat > "${{ github.workspace }}/abi-splits.gradle" <<'EOF'
+          allprojects {
+              plugins.withId('com.android.application') {
+                  android {
+                      splits {
+                          abi {
+                              enable true
+                              reset()
+                              include 'arm64-v8a', 'armeabi-v7a'
+                              universalApk false
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
+          cat "${{ github.workspace }}/abi-splits.gradle"
+
+      - name: Build release APKs
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          set -euo pipefail
+          ./gradlew :composeApp:assembleRelease \
+            --init-script "${{ github.workspace }}/abi-splits.gradle" \
+            --no-configuration-cache \
+            --stacktrace
+          echo "=== outputs ==="
+          find composeApp/build/outputs/apk -type f -name "*.apk" -exec ls -lh {} \;
+
+      - name: Sign APKs
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME}"
+          BT="$SDK/build-tools/35.0.0"
+          mkdir -p out
+          keytool -genkeypair -v \
+            -keystore out/searitch-release.keystore \
+            -storepass searitch2026 -keypass searitch2026 \
+            -alias searitch -keyalg RSA -keysize 2048 -validity 10950 \
+            -dname "CN=Searitch, OU=Searitch, O=Searitch, L=Unknown, S=Unknown, C=IN" > /dev/null 2>&1
+          for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk"); do
+            base=$(basename "$apk")
+            echo "--- $base"
+            unzip -l "$apk" | awk '{print $4}' | grep -E '^lib/' | cut -d/ -f2 | sort -u | sed 's/^/    abi: /' || true
+            aligned="out/aligned-$base"
+            "$BT/zipalign" -f -p 4 "$apk" "$aligned"
+            case "$base" in
+              *arm64*) name="Searitch-v0.1-arm64-v8a.apk" ;;
+              *armeabi*) name="Searitch-v0.1-armeabi-v7a.apk" ;;
+              *) name="Searitch-v0.1-$base" ;;
+            esac
+            "$BT/apksigner" sign --ks out/searitch-release.keystore \
+              --ks-pass pass:searitch2026 --key-pass pass:searitch2026 \
+              --ks-key-alias searitch --out "out/$name" "$aligned"
+            "$BT/apksigner" verify --print-certs "out/$name" | head -3
+          done
+          echo "=== signed artifacts ==="
+          ls -lh out
+          sha256sum out/*.apk | tee out/SHA256SUMS.txt
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: searitch-apks
+          path: out/*
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || 'v0.1' }}
+        run: |
+          set -euo pipefail
+          cat > notes.md <<'EOF'
+          Searitch — universal image search app (Compose Multiplatform).
+
+          Built straight from `searitch-universal-image-search-app.zip` (source unmodified).
+
+          **Assets**
+          - `Searitch-v0.1-arm64-v8a.apk` — 64-bit ARM (arm64-v8a)
+          - `Searitch-v0.1-armeabi-v7a.apk` — 32-bit ARM (armeabi-v7a)
+          - `searitch-release.keystore` — signing key for this release (store/key password: `searitch2026`, alias `searitch`)
+          - `SHA256SUMS.txt`
+
+          Package: `app.searitch` · versionName `1.0.0` · minSdk 24 · targetSdk 35
+          EOF
+          gh release view "$TAG" > /dev/null 2>&1 && gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG" \
+            --title "Searitch $TAG" \
+            --notes-file notes.md \
+            --target "$GITHUB_SHA" \
+            out/Searitch-v0.1-arm64-v8a.apk \
+            out/Searitch-v0.1-armeabi-v7a.apk \
+            out/searitch-release.keystore \
+            out/SHA256SUMS.txt
