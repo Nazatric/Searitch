@@ -374,9 +374,21 @@ private fun MaterialPreview() {
                 )
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Text("PREVIEW", color = Ink.onLeatherSoft, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-            GearButton(onClick = {}, open = false, modifier = Modifier)
+            // a static medallion: same metal as the real gear, not a live control
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .shadow(4.dp, RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(brassBrush(), RoundedCornerShape(12.dp))
+                    .border(1.dp, LocalPalette.current.brassDark, RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Ico.Gear, LocalPalette.current.brassText, Modifier.size(23.dp)) }
         }
     }
 }
