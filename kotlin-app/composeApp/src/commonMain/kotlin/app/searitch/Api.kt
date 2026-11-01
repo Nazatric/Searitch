@@ -1631,6 +1631,7 @@ object Api {
         val gathered = mutableListOf<List<SearitchImage>>()
         var flushed = false
         var finished = 0
+        var answered = 0
         var timer: Job? = null
 
         suspend fun flush() {
@@ -1651,6 +1652,7 @@ object Api {
                 val raw = r.getOrDefault(emptyList())
                 recordResult(name, r.isSuccess, currentTimeMillis() - started, raw.size)
                 lock.withLock {
+                    if (r.isSuccess) answered++
                     val gated = gate(plan, raw)
                     val fresh = gated.filter { passesFilters(it, filters) && seen.add(it.full) }
                     if (fresh.isNotEmpty()) {
@@ -1665,7 +1667,21 @@ object Api {
                         }
                     }
                     finished++
-                    if (finished == active.size) flush()
+                    if (finished == active.size) {
+                        flush()
+                        /*
+                         * "Nothing matched" and "nothing answered" are different
+                         * problems and deserve different words. If every source
+                         * failed — no connection, server down, DNS — the grid
+                         * used to say no images matched the search, which sends
+                         * the person off rewriting a query that was fine.
+                         */
+                        if (answered == 0) {
+                            throw IllegalStateException(
+                                "No source answered. Check the connection and try again.",
+                            )
+                        }
+                    }
                 }
             }
         }
