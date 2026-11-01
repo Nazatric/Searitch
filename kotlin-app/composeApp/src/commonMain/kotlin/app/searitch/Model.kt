@@ -26,6 +26,26 @@ fun SearitchImage.cardPicture(): String = ratioHonest(thumb) ?: full
 /** The rendition the detail hero paints first. */
 fun SearitchImage.heroPicture(): String = ratioHonest(preview) ?: cardPicture()
 
+/**
+ * Whether the picture can have see-through parts.
+ *
+ * PNG, WebP and SVG carry an alpha channel; JPEG never does. Some sources leave
+ * `filetype` empty or send "image/jpeg" through it, so the URL is asked as well —
+ * a `.png` on the end of the biggest rendition is a better answer than nothing.
+ * Only used to choose what sits *behind* the picture, so a wrong guess is a
+ * shade, never a failure.
+ */
+fun SearitchImage.canHaveAlpha(): Boolean {
+    val declared = filetype.substringAfter('/', filetype).lowercase().trim()
+    if (declared in ALPHA_FORMATS) return true
+    if (declared.isNotEmpty() && declared in setOf("jpg", "jpeg", "gif", "bmp")) return false
+    return listOf(full, preview ?: "", thumb).any { url ->
+        url.substringBefore('?').substringAfterLast('.').lowercase() in ALPHA_FORMATS
+    }
+}
+
+private val ALPHA_FORMATS = setOf("png", "svg", "webp", "avif", "tiff", "tif")
+
 /** One normalized image result, regardless of which source it came from. */
 @Immutable
 @Serializable
@@ -90,6 +110,50 @@ enum class ProviderFilter(val label: String) {
 
 data class ColorOption(val key: String, val label: String, val hex: Long, val wallhaven: String)
 
+/**
+ * The colour wheel can pick any shade there is, but the sources that filter by
+ * colour only understand a handful of names. A custom pick therefore keeps its
+ * exact hex for the one source that takes a hex (Wallhaven) and is described to
+ * the name-only sources by its nearest named colour — which is what a person
+ * means when they say "roughly red" anyway.
+ */
+fun nearestColorName(hex: String): ColorOption? {
+    val rgb = parseHex(hex) ?: return null
+    val r0 = (rgb shr 16) and 0xFF
+    val g0 = (rgb shr 8) and 0xFF
+    val b0 = rgb and 0xFF
+    return COLOR_OPTIONS.minByOrNull { option ->
+        val r = ((option.hex shr 16) and 0xFF).toInt()
+        val g = ((option.hex shr 8) and 0xFF).toInt()
+        val b = (option.hex and 0xFF).toInt()
+        // Weighted the way the eye sees it, so a deep cyan reads "blue", not "green".
+        val dr = (r0 - r) * 0.30
+        val dg = (g0 - g) * 0.59
+        val db = (b0 - b) * 0.11
+        dr * dr + dg * dg + db * db
+    }
+}
+
+/** "3aa7ff" or "#3AA7FF" → 0x3AA7FF. */
+fun parseHex(hex: String): Int? {
+    val clean = hex.removePrefix("#").trim()
+    if (clean.length != 6 || clean.any { it.digitToIntOrNull(16) == null }) return null
+    return clean.toIntOrNull(16)
+}
+
+/** 0xRRGGBB → "#RRGGBB", which is what the Wallhaven API wants. */
+fun hexString(rgb: Int): String = (rgb and 0xFFFFFF).toString(16).padStart(6, '0')
+
+/** What the filter sheet calls the current colour. */
+fun colorLabel(f: Filters): String? {
+    if (f.colorHex.isNotEmpty()) {
+        val named = nearestColorName(f.colorHex)
+        val hex = f.colorHex.uppercase()
+        return if (named != null) "#$hex · near ${named.label}" else "#$hex"
+    }
+    return COLOR_OPTIONS.firstOrNull { it.key == f.color }?.label
+}
+
 val COLOR_OPTIONS = listOf(
     ColorOption("red", "Red", 0xFFC0392B, "cc0000"),
     ColorOption("orange", "Orange", 0xFFE67E22, "ff9900"),
@@ -112,6 +176,8 @@ data class Filters(
     val aspect: AspectFilter = AspectFilter.ANY,
     val size: SizeFilter = SizeFilter.ANY,
     val color: String = "",
+    /** A colour from the wheel, "RRGGBB". Takes precedence over [color]. */
+    val colorHex: String = "",
     val license: LicenseFilter = LicenseFilter.ANY,
     val provider: ProviderFilter = ProviderFilter.ALL,
     val safe: Boolean = true,
@@ -122,7 +188,7 @@ data class Filters(
             type != TypeFilter.ANY,
             aspect != AspectFilter.ANY,
             size != SizeFilter.ANY,
-            color.isNotEmpty(),
+            color.isNotEmpty() || colorHex.isNotEmpty(),
             license != LicenseFilter.ANY,
             provider != ProviderFilter.ALL,
             !safe,

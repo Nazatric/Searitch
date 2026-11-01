@@ -42,7 +42,6 @@ import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,7 +71,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil3.Image as CoilImage
-import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.compose.LocalPlatformContext
 import coil3.compose.rememberAsyncImagePainter
@@ -109,6 +107,9 @@ private fun heroRendition(img: SearitchImage): HeroRendition {
 }
 
 private val SKELETON_RATIOS = listOf(1.5f, 0.75f, 1.1f, 0.7f, 1.35f, 0.9f)
+
+/** What sits behind a picture that can have holes in it. */
+private val HeroBacking = Color(0xFF000000)
 
 /** Similar-image sets are kept for the session so re-opening a photo is instant. */
 private object RelatedCache {
@@ -182,6 +183,10 @@ fun DetailScreen(
         related = refined.images
     }
 
+    // From the format first, then the decoder — whatever the bitmap says wins,
+    // because a black stage behind an opaque picture is invisible and a paper
+    // one behind a cut-out is not.
+    val alphaHint = remember(shown.id, shown.filetype, shown.full) { shown.canHaveAlpha() }
     val rendition = remember(img.id) { heroRendition(img) }
     val firstPainter = rememberAsyncImagePainter(model = rendition.first)
 
@@ -235,6 +240,12 @@ fun DetailScreen(
         (sharpState as? AsyncImagePainter.State.Success)?.result?.image
             ?: (firstState as? AsyncImagePainter.State.Success)?.result?.image
 
+    // Format hint first, then the decoder itself — the bitmap has the last word,
+    // because a black stage behind an opaque picture is invisible while a paper
+    // one behind a cut-out is not.
+    val decodedAlpha = remember(decodedHero) { decodedHero?.decodedAlpha() }
+    val hasAlpha = alphaHint || decodedAlpha == true
+
     /*
      * The frame is sized to the picture, and the picture is drawn whole.
      *
@@ -259,7 +270,17 @@ fun DetailScreen(
     // actually contains an Ultra HDR gain map. SDR sources remain ordinary SDR.
     PlatformHdrWindow(image = decodedHero, enabled = true)
 
-    Column(Modifier.fillMaxSize().leatherSurface(tall = true)) {
+    // The photo sits on top of the results screen now, so it takes every tap:
+    // otherwise a press on bare leather would reach the grid underneath.
+    Column(
+        Modifier
+            .fillMaxSize()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { }
+            .leatherSurface(tall = true),
+    ) {
         /* ── leather strap ── */
         Row(
             modifier = Modifier
@@ -317,14 +338,23 @@ fun DetailScreen(
                     )
                     Box(
                         Modifier
-                            .sharedPhoto(img.id)
                             .fillMaxWidth()
                             .aspectRatio(shownHeroRatio)
                             .clip(RoundedCornerShape(3.dp))
-                            .background(Paper.imageWell),
+                            // A PNG with holes in it needs something honest
+                            // behind it. Paper would show through the clear
+                            // parts as a cream cast, so transparent formats get
+                            // black — the detail view only; the cards keep their
+                            // paper, where the shape reads fine at thumbnail size.
+                            .background(if (hasAlpha) HeroBacking else Paper.imageWell),
                     ) {
                         Box(
                             Modifier
+                                // The shared element is the picture alone. The
+                                // backing is a separate, static surface, so the
+                                // flight from the card never drags a black slab
+                                // across the page with it.
+                                .sharedPhoto(img.id)
                                 .fillMaxSize()
                                 .photoGestures(
                                     key = img.id,
@@ -494,8 +524,8 @@ fun DetailScreen(
                         }
                         PaperAction(
                             when (wallState) {
-                                SaveState.Saving -> "Setting…"
-                                SaveState.Saved -> "On your wall ✓"
+                                SaveState.Saving -> "Preparing…"
+                                SaveState.Saved -> "Opened ✓"
                                 else -> "Wallpaper"
                             },
                             Modifier.weight(1f),
@@ -511,8 +541,12 @@ fun DetailScreen(
                                 wallMessage = outcome.message
                                 if (outcome.ok) {
                                     haptics.tap()
-                                    kotlinx.coroutines.delay(2600)
-                                    if (wallState == SaveState.Saved) wallState = SaveState.Idle
+                                    // The device's setter is in front of the app
+                                    // now, so the button resets quietly rather
+                                    // than sitting on "Opened ✓" for the next
+                                    // time the screen is seen.
+                                    kotlinx.coroutines.delay(1200)
+                                    wallState = SaveState.Idle
                                 }
                             }
                         }

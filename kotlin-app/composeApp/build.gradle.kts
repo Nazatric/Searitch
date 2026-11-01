@@ -42,6 +42,9 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
             implementation(libs.androidx.activity.compose)
+            // FileProvider: a picture on its way to the system wallpaper setter
+            // has to travel as a content:// URI.
+            implementation(libs.androidx.core.ktx)
         }
         wasmJsMain.dependencies {
             implementation(libs.ktor.client.js)
@@ -61,8 +64,8 @@ android {
         applicationId = "app.searitch"
         minSdk = 24
         targetSdk = 35
-        versionCode = 13
-        versionName = "1.9.0"
+        versionCode = 20
+        versionName = "2.0.0"
     }
 
     compileOptions {

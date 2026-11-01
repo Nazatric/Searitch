@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The only thing shared out of the app is a picture on its way to the
+     device's wallpaper setter, from the cache folder. -->
+<paths>
+    <cache-path name="shared" path="share/" />
+</paths>

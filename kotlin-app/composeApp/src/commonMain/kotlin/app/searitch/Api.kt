@@ -156,8 +156,24 @@ object Api {
      * sources with no colour metadata at all are skipped when a colour is picked
      * — see [providers].
      */
-    private fun colorTerm(f: Filters): String =
-        COLOR_OPTIONS.firstOrNull { it.key == f.color }?.let { " ${it.key}" } ?: ""
+    private fun colorTerm(f: Filters): String = colorName(f)?.let { " $it" } ?: ""
+
+    /**
+     * The colour the search is actually about, as a name the sources understand.
+     * A wheel pick is exact for Wallhaven (which takes a hex) but has to be
+     * described as its nearest name to everything else.
+     */
+    private fun colorName(f: Filters): String? =
+        if (f.colorHex.isNotEmpty()) nearestColorName(f.colorHex)?.key
+        else f.color.takeIf { it.isNotEmpty() }
+
+    /** A colour is on — either a named swatch or a wheel pick. */
+    private fun hasColour(f: Filters): Boolean = f.color.isNotEmpty() || f.colorHex.isNotEmpty()
+
+    /** The exact hex for the one source that filters by hex. */
+    private fun colorHexOrNull(f: Filters): String? =
+        parseHex(f.colorHex)?.let { hexString(it) }
+            ?: COLOR_OPTIONS.firstOrNull { it.key == f.color }?.wallhaven
 
     /**
      * Orientation and size are checked against the dimensions the source
@@ -312,8 +328,7 @@ object Api {
             parameters.append("purity", if (f.safe) "100" else "110")
             parameters.append("categories", "111")
             parameters.append("sorting", "relevance")
-            COLOR_OPTIONS.firstOrNull { it.key == f.color }
-                ?.let { parameters.append("colors", it.wallhaven) }
+            colorHexOrNull(f)?.let { parameters.append("colors", it) }
             when (f.aspect) {
                 AspectFilter.WIDE -> parameters.append("ratios", "landscape")
                 AspectFilter.TALL -> parameters.append("ratios", "portrait")
@@ -565,20 +580,36 @@ object Api {
         return all
             .filter { (p, _, _) ->
                 (f.provider == ProviderFilter.ALL || f.provider == p) &&
-                    (f.color.isEmpty() || p in COLOUR_AWARE) &&
+                    (!hasColour(f) || p in COLOUR_AWARE) &&
                     (f.license == LicenseFilter.ANY || p in LICENCE_AWARE)
             }
             .map { (_, name, run) -> name to run }
     }
 
+    /**
+     * What the sources are actually asked for.
+     *
+     * People type quotes, double spaces and trailing commas; every source
+     * treats those differently, and half of them answer "nothing" to a stray
+     * quote. It is tidied once, here, so a query behaves the same everywhere.
+     */
+    fun cleanQuery(raw: String): String = raw
+        .replace('\u00A0', ' ')
+        .trim()
+        .removeSurrounding("\"")
+        .removeSurrounding("'")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
     suspend fun search(q: String, filters: Filters, page: Int): List<SearitchImage> =
         coroutineScope {
-            val lists = providers(q, filters, page).filterNot { shouldSkip(it.first) }.map { (name, run) ->
+            val query = cleanQuery(q)
+            val lists = providers(query, filters, page).filterNot { shouldSkip(it.first) }.map { (name, run) ->
                 async {
                     val r = runCatching { withTimeout(budgetFor(name)) { run() } }
                     recordResult(name, r.isSuccess)
                     // Only results that answer the query are allowed through.
-                    gate(q, r.getOrDefault(emptyList()))
+                    gate(query, r.getOrDefault(emptyList()))
                 }
             }.awaitAll()
 
@@ -1110,7 +1141,7 @@ object Api {
         val count = 35
         val first = (page - 1) * count + 1
         val qft = buildString {
-            BING_COLOR[f.color]?.let { append("+filterui:color2-FGcls_").append(it) }
+            colorName(f)?.let { BING_COLOR[it] }?.let { append("+filterui:color2-FGcls_").append(it) }
             when (f.aspect) {
                 AspectFilter.WIDE -> append("+filterui:aspect-wide")
                 AspectFilter.TALL -> append("+filterui:aspect-tall")
@@ -1416,7 +1447,13 @@ object Api {
             append(img.tags.joinToString(" ").lowercase())
         }.replace('-', ' ').replace('_', ' ').replace('/', ' ')
         var hits = 0
-        for (t in terms) if (hay.contains(t)) hits++
+        for (t in terms) {
+            // The word itself, or its stem: "cathedral" then also answers
+            // "cathedrals", and "mountain" answers "mountains" — which is how a
+            // person reads a search, and costs nothing.
+            val stem = if (t.length >= 5) t.take(5) else t
+            if (hay.contains(t) || (stem.length >= 5 && hay.contains(stem))) hits++
+        }
         return hits
     }
 
@@ -1460,7 +1497,8 @@ object Api {
      * interleaved across sources so the first screen is a real mix of sites.
      */
     fun searchStream(q: String, filters: Filters, page: Int): Flow<List<SearitchImage>> = channelFlow {
-        val active = providers(q, filters, page).filterNot { shouldSkip(it.first) }
+        val query = cleanQuery(q)
+        val active = providers(query, filters, page).filterNot { shouldSkip(it.first) }
         if (active.isEmpty()) return@channelFlow
 
         val lock = Mutex()
@@ -1484,7 +1522,7 @@ object Api {
                 val r = runCatching { withTimeout(budgetFor(name)) { run() } }
                 recordResult(name, r.isSuccess)
                 lock.withLock {
-                    val gated = gate(q, r.getOrDefault(emptyList()))
+                    val gated = gate(query, r.getOrDefault(emptyList()))
                     val fresh = gated.filter { passesFilters(it, filters) && seen.add(it.full) }
                     if (fresh.isNotEmpty()) {
                         if (flushed) {
