@@ -73,6 +73,7 @@ enum class LicenseFilter(val label: String) {
 enum class ProviderFilter(val label: String) {
     ALL("All sources"),
     BING("Bing — full web"),
+    YANDEX("Yandex — full web"),
     OPENVERSE("Openverse"),
     WIKIMEDIA("Wikimedia"),
     WALLHAVEN("Wallhaven"),

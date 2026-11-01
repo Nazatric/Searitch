@@ -1,34 +1,29 @@
-## v0.12 — 1 Nov 2026
+## v0.13 — 1 Nov 2026
 
-`versionCode 12` · `versionName 1.8.0`
+`versionCode 13` · `versionName 1.9.0`
 
-**"Similar" now means similar.** The old strip re-ran the search text, so a
-Wallhaven wall that arrived without tags was "similar" to the literal word
-`wallpaper` — hence mountains, paper rolls and a group photo. Two things had to
-be true before that could be fixed. First, every reverse-image engine was
-checked, and none of them can serve a phone app: SauceNAO answers *"the
-anonymous account type does not permit API usage"*, trace.moe refuses to fetch a
-URL at all, Bing's `searchbyimage?imgurl=` GET redirects to its trending page,
-and Yandex only assembles its similar/sizes/sites blocks in JavaScript — the raw
-HTML a client receives has none of it. Second, the picture itself. So the
-comparison is made in the app: a 64-bit difference hash of the opened photo, the
-same hash of each candidate, ordered by how few bits differ, and anything more
-than half the bits apart is dropped instead of being called similar. Candidates
-come from the photo's own subject, and results that don't name that subject are
-filtered out before the hashing even starts.
+**Results now answer what you typed.** Searching `android` was returning beach
+wallpapers and Spanish university thesis covers. Two separate causes, both
+fixed. Bing's image endpoint answers some single words with a *trending* set
+instead of the query — ask it for `android` and it hands back "Another Round"
+film posters — and nothing downstream ever checked a result against the query,
+so anything a source said went straight into the grid. Every result is now
+scored against the words you typed, in its title, site, page address, file
+address and tags; a result that mentions none of them is dropped, and a source
+whose whole page misses the query is discarded rather than shown. Results that
+do match are ordered by how much of the query they contain.
 
-**Wallhaven photos have titles now.** Its search endpoint returns no title *and*
-no tags — the app was labelling walls `Wallpaper 1964×3500`, which the caption
-treated as noise and replaced with `Untitled Photo`. The wall's own record is now
-read when you open it, so the title is the site's real tags: *Fox Girl · Flute ·
-Blue Eyes*. Nothing shows "Untitled" any more; a photo with no title at all is
-described by the collection it came from.
+**Yandex is in.** ImageSearchMan searches Google, Bing and Yandex; Google's
+results are base64 strings assembled by its own JavaScript and its old JSON
+endpoint now 404s, DuckDuckGo answers a plain client with a `botnet_challenge`,
+Baidu answers `Forbid spider access`, and Yahoo renders its grid in JavaScript —
+all four were tried and none can serve a plain HTTP client, so none is claimed.
+Yandex renders a full page of results server-side, with the picture's real title,
+its real dimensions and its original file, and it answers the query it is given.
+That is fourteen sources.
 
-**Three things worth having when you find a picture.** Share, with the page that
-credits whoever made it. Set as wallpaper, straight from the panel — no download,
-no gallery hop. And pinch to scale the picture, with a readout that tells you how
-far in you are and takes you back to whole with a tap.
-
-The web build keeps the subject ranking but not the look ranking: reading pixels
-back out of a cross-origin image in a browser is refused by several of these
-sources, so it reports what it actually did instead of claiming the rest.
+**The photo panel scrolls again.** Pinch-to-scale arrived in v0.12 using the
+general transform detector, which reads a one-finger drag as a pan and swallowed
+the gesture — so the biggest thing on the detail page was the one part you
+couldn't drag, and the page only scrolled from the strip below it. Two fingers
+zoom and pan the picture now; one finger scrolls the page, exactly as before.

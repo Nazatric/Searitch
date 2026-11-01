@@ -6,11 +6,12 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v0.12"
+        default: "v0.13"
   push:
     branches:
       # the working branch Arena is on; keep the last one too so a rebase or a
       # branch switch doesn't silently stop the build
+      - "arena/80728bfa-searitch"
       - "arena/942b364c-searitch"
       - "arena/5a0be822-searitch"
       - "arena/8747d8f4-searitch"
@@ -179,9 +180,9 @@ jobs:
           for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk" | sort); do
             base=$(basename "$apk")
             case "$base" in
-              *arm64*)   name="Searitch-v0.12-arm64-v8a.apk" ;;
-              *armeabi*) name="Searitch-v0.12-armeabi-v7a.apk" ;;
-              *)         name="Searitch-v0.12-$base" ;;
+              *arm64*)   name="Searitch-v0.13-arm64-v8a.apk" ;;
+              *armeabi*) name="Searitch-v0.13-armeabi-v7a.apk" ;;
+              *)         name="Searitch-v0.13-$base" ;;
             esac
             echo "--- $base -> $name"
 
@@ -233,57 +234,50 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || 'v0.12' }}
+          TAG: ${{ github.event.inputs.tag || 'v0.13' }}
         run: |
           set -euo pipefail
           cat > notes.md <<'EOF'
-          ### v0.12 — similar means similar, and nothing is untitled
+          ### v0.13 — results answer the query, and Yandex joins
 
-          `versionCode 12` · `versionName 1.8.0`
+          `versionCode 13` · `versionName 1.9.0`
 
-          **The similar strip compares pictures, not words**
+          **The beach photos under "android"**
 
-          It used to re-run the search text, so a Wallhaven wall that arrived
-          without tags was "similar" to the word `wallpaper` — which is how a
-          strip of mountains, paper rolls and a group photo ended up under an
-          anime wall. The picture is now compared to the candidates with a
-          64-bit difference hash: 64 samples per image, ordered by how many bits
-          differ, and anything more than half the bits apart is dropped rather
-          than shown. Candidates that don't share the photo's own subject are
-          filtered out before the hashing starts.
+          Two causes. Bing's `/images/async` answers some single words with a
+          trending set instead of the query — ask it for `android` and it returns
+          "Another Round" film posters — and nothing ever checked a result
+          against the words that were typed, so whatever a source said went into
+          the grid. Every result is now scored against the query across its
+          title, site, page address, file address and tags. A result that
+          mentions none of it is dropped; a source whose whole page misses the
+          query is discarded rather than shown; results that match are ordered by
+          how much of the query they contain.
 
-          Every reverse-image engine was tried first, and none of them can serve
-          a phone app: SauceNAO refuses anonymous API use, trace.moe refuses to
-          fetch a URL, Bing's reverse GET redirects to its trending page, and
-          Yandex builds its similar block in JavaScript only. Rather than ship a
-          button that quietly returns nothing, the comparison moved into the app.
+          **Yandex**
 
-          **No more Untitled Photo**
+          ImageSearchMan searches Google, Bing and Yandex. Google's results are
+          base64 strings assembled by its JavaScript and its legacy JSON endpoint
+          now 404s; DuckDuckGo answers a plain client with a
+          `botnet_challenge`; Baidu answers `Forbid spider access`; Yahoo renders
+          its grid in JavaScript. None of the four can serve a plain HTTP client,
+          so none is claimed. Yandex renders its full result page server-side
+          with real titles, real dimensions and the original file, and it answers
+          the query it was given. Fourteen sources now.
 
-          Wallhaven's search endpoint returns no title *and* no tags. Walls were
-          being labelled `Wallpaper 1964×3500`, which the caption threw away as
-          noise. Opening a wall now reads its own record, so the title is the
-          site's real tags — *Fox Girl · Flute · Blue Eyes* — and the same tags
-          are what the similar search uses. A photo with no title anywhere is
-          described by the collection it came from.
+          **The photo panel scrolls**
 
-          **Share, Set as wallpaper, pinch to scale**
-
-          Sharing sends the page that credits the photographer. The wallpaper
-          button sets the picture from the panel with no download and no gallery
-          hop. Pinching scales the picture and the little readout says how far in
-          you are; tap it to fit again.
-
-          The web build keeps subject ranking but not look ranking — browsers
-          refuse to read pixels back out of several of these sources — and says
-          so instead of pretending.
+          v0.12's pinch-to-scale used the general transform detector, which reads
+          a one-finger drag as a pan and swallowed the gesture — the biggest thing
+          on the detail page was the one part that couldn't be dragged. Two
+          fingers zoom and pan the picture; one finger scrolls the page again.
 
           ### Assets
 
           | File | For |
           | --- | --- |
-          | `Searitch-v0.12-arm64-v8a.apk` | almost every phone since 2017 |
-          | `Searitch-v0.12-armeabi-v7a.apk` | older 32-bit devices |
+          | `Searitch-v0.13-arm64-v8a.apk` | almost every phone since 2017 |
+          | `Searitch-v0.13-armeabi-v7a.apk` | older 32-bit devices |
           | `searitch-release.keystore` | signing key — password `searitch2026`, alias `searitch` |
           | `SHA256SUMS.txt` | checksums |
           EOF
@@ -293,7 +287,7 @@ jobs:
             --title "Searitch $TAG" \
             --notes-file notes.md \
             --target "$GITHUB_SHA" \
-            out/Searitch-v0.12-arm64-v8a.apk \
-            out/Searitch-v0.12-armeabi-v7a.apk \
+            out/Searitch-v0.13-arm64-v8a.apk \
+            out/Searitch-v0.13-armeabi-v7a.apk \
             out/searitch-release.keystore \
             out/SHA256SUMS.txt
