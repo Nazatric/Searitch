@@ -315,9 +315,17 @@ fun PhotoCard(
                 .clip(RoundedCornerShape(if (style == CardStyle.BARE) 6.dp else 2.dp))
                 .background(pal.paperWell),
         ) {
+            // A dead thumbnail is common on museum and stock CDNs, so a card
+            // falls back to the source's other rendition instead of sitting
+            // there as an empty well.
+            val fallback = img.thumbFallback?.takeIf { it.isNotBlank() && it != img.cardPicture() }
+            var usingFallback by remember(img.id) { mutableStateOf(false) }
             AsyncImage(
                 // the ratio-honest rendition, not the fixed-crop one
-                model = img.cardPicture(),
+                model = if (usingFallback && fallback != null) fallback else img.cardPicture(),
+                onError = {
+                    if (!usingFallback && fallback != null) usingFallback = true
+                },
                 contentDescription = img.title,
                 // Fit, never Crop: the picture is shown whole. The frame is sized
                 // to the bitmap that actually arrives, so "fit" leaves no bars.
