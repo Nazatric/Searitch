@@ -199,8 +199,8 @@ Grab the APK for your device from [Releases](../../releases/latest).
 
 | File | For |
 | --- | --- |
-| `Searitch-v2.1.0-arm64-v8a.apk` | almost every phone since 2017 |
-| `Searitch-v2.1.0-armeabi-v7a.apk` | older 32-bit devices |
+| `Searitch-v2.1.1-arm64-v8a.apk` | almost every phone since 2017 |
+| `Searitch-v2.1.1-armeabi-v7a.apk` | older 32-bit devices |
 
 Release APKs are signed with the key committed at
 `kotlin-app/keystore/searitch-release.keystore`, so every release carries the same

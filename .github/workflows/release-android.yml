@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v2.1.0"
+        default: "v2.1.1"
   push:
     branches:
       # the working branch Arena is on; keep the last one too so a rebase or a
@@ -187,9 +187,9 @@ jobs:
           for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk" | sort); do
             base=$(basename "$apk")
             case "$base" in
-              *arm64*)   name="Searitch-v2.1.0-arm64-v8a.apk" ;;
-              *armeabi*) name="Searitch-v2.1.0-armeabi-v7a.apk" ;;
-              *)         name="Searitch-v2.1.0-$base" ;;
+              *arm64*)   name="Searitch-v2.1.1-arm64-v8a.apk" ;;
+              *armeabi*) name="Searitch-v2.1.1-armeabi-v7a.apk" ;;
+              *)         name="Searitch-v2.1.1-$base" ;;
             esac
             echo "--- $base -> $name"
 
@@ -241,13 +241,13 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || 'v2.1.0' }}
+          TAG: ${{ github.event.inputs.tag || 'v2.1.1' }}
         run: |
           set -euo pipefail
           cat > notes.md <<'EOF'
-          ### Searitch 2.1.0
+          ### Searitch 2.1.1
 
-          `versionCode 22` · `versionName 2.1.0`
+          `versionCode 23` · `versionName 2.1.1`
 
           **The search box reads now.** Words were a pipe before: whatever was
           typed went to fourteen sources unchanged. A query is now read once
@@ -298,8 +298,8 @@ jobs:
 
           | File | For |
           | --- | --- |
-          | `Searitch-v2.1.0-arm64-v8a.apk` | almost every phone since 2017 |
-          | `Searitch-v2.1.0-armeabi-v7a.apk` | older 32-bit devices |
+          | `Searitch-v2.1.1-arm64-v8a.apk` | almost every phone since 2017 |
+          | `Searitch-v2.1.1-armeabi-v7a.apk` | older 32-bit devices |
           | `searitch-release.keystore` | signing key — password `searitch2026`, alias `searitch` |
           | `SHA256SUMS.txt` | checksums |
           EOF
@@ -309,7 +309,7 @@ jobs:
             --title "Searitch $TAG" \
             --notes-file notes.md \
             --target "$GITHUB_SHA" \
-            out/Searitch-v2.1.0-arm64-v8a.apk \
-            out/Searitch-v2.1.0-armeabi-v7a.apk \
+            out/Searitch-v2.1.1-arm64-v8a.apk \
+            out/Searitch-v2.1.1-armeabi-v7a.apk \
             out/searitch-release.keystore \
             out/SHA256SUMS.txt

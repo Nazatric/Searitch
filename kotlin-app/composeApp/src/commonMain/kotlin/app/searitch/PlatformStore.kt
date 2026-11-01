@@ -17,8 +17,8 @@ package app.searitch
  * releases behind the APK, which is worse than showing nothing.
  */
 object BuildInfo {
-    const val VERSION = "2.1.0"
-    const val VERSION_CODE = 22
+    const val VERSION = "2.1.1"
+    const val VERSION_CODE = 23
 }
 
 expect object PlatformStore {

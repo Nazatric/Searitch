@@ -1,6 +1,6 @@
-## 2.1.0 — 2 Nov 2026
+## 2.1.1 — 2 Nov 2026
 
-`versionCode 22` · `versionName 2.1.0`
+`versionCode 23` · `versionName 2.1.1`
 
 **The search box reads before it asks.** Words used to be a pipe: whatever was
 typed went to fourteen sources unchanged, and the only intelligence sat
@@ -46,3 +46,16 @@ alone. A search that found nothing now offers a shorter version of itself.
 **Faster.** Cards decode at card size rather than at source size, the next page
 is fetched before you reach the bottom, and an empty result no longer waits for
 the slowest source to fail.
+
+**Smaller things that were wrong.**
+- The filter sheet now says how many sources a choice would search ("3 of 14")
+  before you commit to it, instead of leaving you with an empty grid.
+- Paging de-duplicates with the same idea of "same picture" the ranker uses, so
+  page two no longer re-introduces what page one dropped.
+- When *no* source answers — no connection, servers down — the grid says so
+  instead of claiming nothing matched the search.
+- "Screen-size" downloads now really use the rendition a source publishes for
+  screens instead of quietly fetching the original, and the label says what it
+  does.
+- The settings sheet prints the real version (it was four releases behind), and
+  feed size and image size are counted separately rather than twice.
