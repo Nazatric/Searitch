@@ -35,7 +35,15 @@ import coil3.size.Precision
 sealed interface Screen {
     data object Home : Screen
     data class Search(val session: SearchSession) : Screen
-    data class Detail(val image: SearitchImage) : Screen
+    /**
+     * A photo, plus the strip it was opened from: the results grid, or the
+     * similar-photos strip of another photo. Carrying it means stepping left and
+     * right stays inside the list the person was actually looking at.
+     */
+    data class Detail(
+        val image: SearitchImage,
+        val strip: List<SearitchImage> = emptyList(),
+    ) : Screen
 }
 
 /**
@@ -135,11 +143,9 @@ fun App(settings: SettingsState = remember { SettingsState.load() }) {
      * to the grid instead of walking back through every picture looked at.
      */
     val openDetail = backStack.lastOrNull() as? Screen.Detail
-    val strip: List<SearitchImage> = openDetail?.let { d ->
-        val session = backStack.lastOrNull { it is Screen.Search } as? Screen.Search
-        val results = session?.session?.results.orEmpty()
-        if (results.any { it.id == d.image.id }) results else listOf(d.image)
-    }.orEmpty()
+    val strip: List<SearitchImage> = openDetail?.strip
+        ?.takeIf { list -> list.any { it.id == openDetail.image.id } }
+        ?: listOfNotNull(openDetail?.image)
     val detailIndex = openDetail?.let { d -> strip.indexOfFirst { it.id == d.image.id } } ?: -1
 
     fun stepDetail(delta: Int) {
@@ -217,7 +223,7 @@ fun App(settings: SettingsState = remember { SettingsState.load() }) {
                             is Screen.Search -> SearchScreen(
                                 session = screen.session,
                                 onSearch = ::openSearch,
-                                onOpenImage = { push(Screen.Detail(it)) },
+                                onOpenImage = { push(Screen.Detail(it, screen.session.results)) },
                                 onBack = { pop() },
                                 onOpenSettings = { settingsOpen = true },
                                 settingsOpen = settingsOpen,
@@ -225,11 +231,12 @@ fun App(settings: SettingsState = remember { SettingsState.load() }) {
 
                             is Screen.Detail -> DetailScreen(
                                 img = screen.image,
-                                onOpenImage = { push(Screen.Detail(it)) },
+                                onOpenImage = { image, from -> push(Screen.Detail(image, from)) },
                                 position = if (detailIndex >= 0) detailIndex else -1,
                                 total = strip.size,
                                 onPrev = { stepDetail(-1) },
                                 onNext = { stepDetail(+1) },
+                                onTag = { tag -> openSearch(tag, settings.value.baseFilters()) },
                                 onFindColour = { hex ->
                                     // Stay inside the words that are already on
                                     // screen and narrow them by the colour: the

@@ -134,9 +134,12 @@ private enum class SaveState { Idle, Saving, Saved, Failed }
 @Composable
 fun DetailScreen(
     img: SearitchImage,
-    onOpenImage: (SearitchImage) -> Unit,
+    /** Opens another photo, with the strip it was shown in. */
+    onOpenImage: (SearitchImage, List<SearitchImage>) -> Unit,
     /** Search this colour — the same words as now, filtered to that hex. */
     onFindColour: (String) -> Unit,
+    /** Search one of the picture's own tags. */
+    onTag: (String) -> Unit,
     /** Where this picture sits in the strip it was opened from, if it did. */
     position: Int = -1,
     total: Int = 0,
@@ -662,6 +665,31 @@ fun DetailScreen(
                                 modifier = Modifier.padding(top = 3.dp),
                             )
                         }
+                        /*
+                         * The picture's own tags, as searches. This is the one
+                         * "more like this" that isn't a guess: the words come
+                         * from the catalogue record that described the picture
+                         * in the first place, so tapping "common dolphin" asks
+                         * for what the source itself called it.
+                         */
+                        val tagChips = shown.tags
+                            .map { it.substringBefore('-').trim() }
+                            .filter { it.length in 3..26 && it.any(Char::isLetter) }
+                            .distinct()
+                            .take(4)
+                        if (tagChips.isNotEmpty()) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(top = 10.dp),
+                            ) {
+                                tagChips.forEach { tag ->
+                                    SearitchChip(tag, selected = false) {
+                                        onTag(tag)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -683,7 +711,9 @@ fun DetailScreen(
                             }
                         } else {
                             itemsIndexed(rel, key = { _, r -> "rel-${r.id}" }) { index, r ->
-                                PhotoCard(r, index, shared = false) { onOpenImage(it) }
+                                PhotoCard(r, index, shared = false) { picked ->
+                                    onOpenImage(picked, related.orEmpty())
+                                }
                             }
                         }
                 }
