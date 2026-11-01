@@ -207,7 +207,7 @@ fun App(settings: SettingsState = remember { SettingsState.load() }) {
                         contentKey = { d -> d?.image?.id ?: "none" },
                         modifier = Modifier.fillMaxSize(),
                         transitionSpec = {
-                            val quick = if (motion) tween(220) else tween(1)
+                            val quick = if (motion) tween<Float>(220) else tween<Float>(1)
                             fadeIn(quick) togetherWith fadeOut(quick)
                         },
                         label = "photo",

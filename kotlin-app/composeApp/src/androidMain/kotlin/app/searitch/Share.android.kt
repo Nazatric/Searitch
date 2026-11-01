@@ -53,7 +53,7 @@ actual fun rememberSharer(): Sharer {
  *  1. `ACTION_CROP_AND_SET_WALLPAPER` — the system's own crop-and-set screen
  *     (API 19+), which on MIUI/HyperOS and stock Android opens the wallpaper
  *     editor with home / lock / both.
- *  2. `ACTION_ATTACH_DATA` with an `image/*` type — the "Set as" sheet every
+ *  2. `ACTION_ATTACH_DATA` with an image MIME type — the "Set as" sheet every
  *     OEM understands, for the devices whose cropper activity isn't exported.
  *  3. Only if neither exists, the direct set, so the button is never dead.
  *

@@ -9,4 +9,4 @@ import coil3.Image
  * reports false, which is the answer we want — it covers whatever is behind it.
  */
 actual fun Image.decodedAlpha(): Boolean? =
-    (this as? BitmapImage)?.bitmap?.hasAlpha
+    (this as? BitmapImage)?.bitmap?.hasAlpha()
