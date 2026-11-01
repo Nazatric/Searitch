@@ -134,7 +134,13 @@ private fun activeLabels(f: Filters): List<Pair<String, Filters>> = buildList {
 private fun merge(current: List<SearitchImage>, chunk: List<SearitchImage>): List<SearitchImage> {
     val seenFull = current.mapTo(HashSet()) { it.full }
     val seenId = current.mapTo(HashSet()) { it.id }
-    return current + chunk.filter { seenFull.add(it.full) && seenId.add(it.id) }
+    // The same wallpaper arrives from Bing and Wallhaven under two URLs; the
+    // ranker's identity collapses it inside a page, and paging has to agree or
+    // page two re-introduces what page one already dropped.
+    val seenPicture = current.mapTo(HashSet()) { Ranker.pictureKey(it) }
+    return current + chunk.filter {
+        seenFull.add(it.full) && seenId.add(it.id) && seenPicture.add(Ranker.pictureKey(it))
+    }
 }
 
 private val SKELETON_RATIOS = listOf(1.5f, 0.75f, 1.1f, 0.7f, 1.35f, 0.9f, 1.6f, 0.8f)
@@ -689,7 +695,18 @@ private fun FilterSheet(
                     letterSpacing = 3.sp,
                 ),
             )
-            SearitchChip("Reset all", selected = false) { onChange(Filters()) }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // What these filters would actually search, before committing to
+                // them: a choice that leaves three sources ought to say so.
+                val n = remember(draft) { Api.activeSourceCount(draft) }
+                Text(
+                    "$n of 14 sources",
+                    color = Ink.onLeatherSoft,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                SearitchChip("Reset all", selected = false) { onChange(Filters()) }
+            }
         }
 
         Column(

@@ -64,11 +64,17 @@ fun mimeForExtension(ext: String): String = when (ext.lowercase()) {
 fun downloadUrlFor(img: SearitchImage, quality: DownloadQuality): String = when (quality) {
     DownloadQuality.ORIGINAL -> img.full
     DownloadQuality.LARGE -> {
-        val thumb = img.thumb
-        if (img.width > 2400 && Regex("/thumb/.+/\\d+px-").containsMatchIn(thumb)) {
-            thumb.replace(Regex("/\\d+px-"), "/2000px-")
-        } else {
-            img.full
+        val big = img.width <= 0 || img.width > 2000
+        val wikimediaThumb = Regex("/thumb/.+/\\d+px-").containsMatchIn(img.thumb)
+        val preview = img.preview?.takeIf { it.isNotBlank() && it != img.full }
+        when {
+            // Wikimedia-style thumb URLs carry the width, so the smaller file is
+            // genuinely a smaller file and not the original under another name.
+            big && wikimediaThumb -> img.thumb.replace(Regex("/\\d+px-"), "/2000px-")
+            // Most sources publish a screen-size rendition alongside the
+            // original; that is exactly what this setting asks for.
+            big && preview != null -> preview
+            else -> img.full
         }
     }
 }

@@ -34,6 +34,9 @@ expect object PlatformStore {
     suspend fun clearFiles(): Unit
     suspend fun filesSize(): Long
 
+    /** Bytes of cached feeds alone — the image cache is measured separately. */
+    suspend fun feedsSize(): Long
+
     /** Bytes held by the decoded-image disk cache alone. */
     suspend fun imageCacheSize(): Long
 

@@ -668,6 +668,38 @@ object Api {
     }
 
     /**
+     * How many sources a filter set would search. Shown in the filter sheet so a
+     * choice that narrows to three sources says so before it is made, instead of
+     * after an empty grid.
+     */
+    fun activeSourceCount(f: Filters): Int = ALL_SOURCES.count { (key, _) ->
+        val p = providerOf(key) ?: return@count false
+        (f.provider == ProviderFilter.ALL || f.provider == p) &&
+            (!hasColour(f) || p in COLOUR_AWARE) &&
+            (f.license == LicenseFilter.ANY || p in LICENCE_AWARE)
+    }
+
+    /** The tile the source list shows, without building a provider closure. */
+    private fun providerOf(key: String): ProviderFilter? = SOURCE_TILES[key]
+
+    private val SOURCE_TILES: Map<String, ProviderFilter> = mapOf(
+        "bing" to ProviderFilter.BING,
+        "yandex" to ProviderFilter.YANDEX,
+        "openverse" to ProviderFilter.OPENVERSE,
+        "wikimedia" to ProviderFilter.WIKIMEDIA,
+        "wallhaven" to ProviderFilter.WALLHAVEN,
+        "flickr" to ProviderFilter.FLICKR,
+        "inaturalist" to ProviderFilter.INATURALIST,
+        "nasa" to ProviderFilter.NASA,
+        "met" to ProviderFilter.MET,
+        "aic" to ProviderFilter.AIC,
+        "cleveland" to ProviderFilter.CLEVELAND,
+        "loc" to ProviderFilter.LOC,
+        "europeana" to ProviderFilter.EUROPEANA,
+        "vam" to ProviderFilter.VAM,
+    )
+
+    /**
      * What the sources are actually asked for.
      *
      * People type quotes, double spaces and trailing commas; every source

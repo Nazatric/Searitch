@@ -147,6 +147,13 @@ object Ranker {
      * pixel size. Two different pictures called `sunset` at 1600×900 are rare
      * enough to accept, and the collapse keeps whichever copy scores higher.
      */
+    /**
+     * The key paging uses to keep one copy of a picture that arrives from two
+     * sources on two different pages. Public because the feed merge needs the
+     * same idea of "same picture" the ranker uses.
+     */
+    fun pictureKey(img: SearitchImage): String = identity(img)
+
     private fun identity(img: SearitchImage): String {
         val stem = img.full
             .substringBefore('?')

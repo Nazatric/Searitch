@@ -114,7 +114,8 @@ object FeedCache {
         PlatformStore.clearFiles()
     }
 
-    suspend fun sizeBytes(): Long = PlatformStore.filesSize()
+    /** Feeds only: the image cache is a separate figure in Settings. */
+    suspend fun sizeBytes(): Long = PlatformStore.feedsSize()
 
     fun isFresh(feed: CachedFeed): Boolean {
         val age = now() - feed.savedAt
