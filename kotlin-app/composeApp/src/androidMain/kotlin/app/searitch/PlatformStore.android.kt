@@ -75,6 +75,25 @@ actual object PlatformStore {
         Unit
     }
 
+    /** Coil's disk cache, which is the only large thing in cacheDir. */
+    private fun imageDir(): File? {
+        val ctx = appContext ?: return null
+        return File(ctx.cacheDir, "image_cache")
+    }
+
+    actual suspend fun imageCacheSize(): Long = withContext(Dispatchers.IO) {
+        runCatching {
+            var total = 0L
+            imageDir()?.walkTopDown()?.filter { it.isFile }?.forEach { total += it.length() }
+            total
+        }.getOrDefault(0L)
+    }
+
+    actual suspend fun clearImageCache() = withContext(Dispatchers.IO) {
+        runCatching { imageDir()?.deleteRecursively() }
+        Unit
+    }
+
     actual suspend fun filesSize(): Long = withContext(Dispatchers.IO) {
         runCatching {
             var total = 0L

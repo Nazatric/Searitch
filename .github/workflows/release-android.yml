@@ -6,12 +6,12 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v2.0.0"
+        default: "v2.1.0"
   push:
     branches:
       # the working branch Arena is on; keep the last one too so a rebase or a
       # branch switch doesn't silently stop the build
-      - "arena/c0796c2f-searitch"
+      - "arena/103d832b-searitch"
     paths:
       - "kotlin-app/**"
       - ".github/workflows/release-android.yml"
@@ -187,9 +187,9 @@ jobs:
           for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk" | sort); do
             base=$(basename "$apk")
             case "$base" in
-              *arm64*)   name="Searitch-v2.0.0-arm64-v8a.apk" ;;
-              *armeabi*) name="Searitch-v2.0.0-armeabi-v7a.apk" ;;
-              *)         name="Searitch-v2.0.0-$base" ;;
+              *arm64*)   name="Searitch-v2.1.0-arm64-v8a.apk" ;;
+              *armeabi*) name="Searitch-v2.1.0-armeabi-v7a.apk" ;;
+              *)         name="Searitch-v2.1.0-$base" ;;
             esac
             echo "--- $base -> $name"
 
@@ -241,51 +241,65 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || 'v2.0.0' }}
+          TAG: ${{ github.event.inputs.tag || 'v2.1.0' }}
         run: |
           set -euo pipefail
           cat > notes.md <<'EOF'
-          ### Searitch 2.0.0
+          ### Searitch 2.1.0
 
-          `versionCode 21` · `versionName 2.0.0`
+          `versionCode 22` · `versionName 2.1.0`
 
-          **Wallpaper goes through your phone now.** The button used to call
-          Android's wallpaper API directly: it set the picture and gave you no
-          say in it — no crop, no home-or-lock choice, nothing the phone itself
-          offers. It now hands the file to the setter your device ships with, the
-          same one you reach from Gallery. On HyperOS/MIUI and stock Android that
-          is the full-screen wallpaper editor; anywhere else it is the "Set as"
-          sheet. The old direct set stays as the last resort, so the button is
-          never dead.
+          **The search box reads now.** Words were a pipe before: whatever was
+          typed went to fourteen sources unchanged. A query is now read once
+          before anything is asked — format words ("png", "transparent", "svg")
+          are applied and show as a removable chip, while colour, size and intent
+          words ("red", "4k", "wallpaper") become a suggestion you can tap rather
+          than a silent narrowing. The home screen shows what it understood as
+          you type.
 
-          **Any colour, not twelve.** The named swatches are still there, because
-          the sources that filter by colour only understand names. Beside them is
-          a wheel: drag anywhere in it, read the hex, and use it. A wheel pick
-          goes to Wallhaven as its exact hex and reaches the name-only sources as
-          its nearest name, so a pick never quietly searches for nothing.
+          **Results are ranked, not just mixed.** Each result is scored on how
+          much of the query it actually names (title first, then curated tags,
+          then site), how large it is, whether its shape suits what was asked,
+          and how much its source knows about it — a museum catalogue outranks a
+          reposted thumbnail. Near-copies from different sources collapse onto
+          the best copy, and no single source may own a page. With one source
+          selected, all of it comes through.
 
-          **Transparent pictures get a black stage.** A PNG with holes in it sat
-          on cream paper in the detail view, which tinted everything you could
-          see through. Transparent formats now get full black behind them in the
-          detail view. Cards keep their paper, where the shape reads fine.
+          **Sources are measured.** Each one now carries a moving average of how
+          long it takes, and its timeout follows that measurement with headroom:
+          a source answering in 400 ms is no longer waited on for six seconds.
+          Settings → Sources shows every source, its speed, how much it returned,
+          and whether it is resting after failures.
 
-          **Coming back from a photo lands where you left it.** A photo used to
-          replace the results screen, so the grid was rebuilt on the way back and
-          the shared-element flight measured it before it had restored its
-          scroll — the picture flew to the wrong spot and only found its place
-          once you dragged the list. The results screen now stays alive and the
-          photo opens over it, so the card the photo came from never stops
-          existing.
+          **Refinements from what came back.** Tags that several returned
+          pictures share, that the query doesn't already contain, are offered as
+          "narrow it" chips. Nothing is generated or guessed.
 
-          **Search tidies what you type** — stray quotes and double spaces — and
-          matches word stems, so "cathedral" finds "cathedrals".
+          **A photo steps through the strip it came from.** Previous and next in
+          the detail strap, with a counter, staying inside the grid or the
+          similar-photos strip you opened it from — and Back still returns to
+          where you were.
+
+          **Colours from the picture itself.** The detail page samples the
+          decoded image and offers its palette as swatches; tapping one searches
+          that exact colour.
+
+          **The picture's own tags are buttons**, so "common dolphin" asks the
+          catalogue for what it called the thing.
+
+          **Recent searches keep their filters.** Tapping a past search restores
+          the format, colour and orientation it was made with instead of
+          replaying the words alone.
+
+          **Cards decode at card size** instead of at source size, and the next
+          page is fetched before the bottom of the grid.
 
           ### Assets
 
           | File | For |
           | --- | --- |
-          | `Searitch-v2.0.0-arm64-v8a.apk` | almost every phone since 2017 |
-          | `Searitch-v2.0.0-armeabi-v7a.apk` | older 32-bit devices |
+          | `Searitch-v2.1.0-arm64-v8a.apk` | almost every phone since 2017 |
+          | `Searitch-v2.1.0-armeabi-v7a.apk` | older 32-bit devices |
           | `searitch-release.keystore` | signing key — password `searitch2026`, alias `searitch` |
           | `SHA256SUMS.txt` | checksums |
           EOF
@@ -295,7 +309,7 @@ jobs:
             --title "Searitch $TAG" \
             --notes-file notes.md \
             --target "$GITHUB_SHA" \
-            out/Searitch-v2.0.0-arm64-v8a.apk \
-            out/Searitch-v2.0.0-armeabi-v7a.apk \
+            out/Searitch-v2.1.0-arm64-v8a.apk \
+            out/Searitch-v2.1.0-armeabi-v7a.apk \
             out/searitch-release.keystore \
             out/SHA256SUMS.txt

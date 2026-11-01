@@ -254,11 +254,35 @@ fun SearchScreen(
 
     LaunchedEffect(gridState) {
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
-            .collect { last -> if (last >= sizeNow - 6) loadMoreNow() }
+            // Ask for the next page a little before the end: the wait then
+            // overlaps with the cards already on screen instead of happening
+            // in front of the user at the bottom of the grid.
+            .collect { last -> if (last >= sizeNow - 10) loadMoreNow() }
     }
 
     val facets = remember(session.results, session.filters) { buildFacets(session.results, session.filters) }
     val active = remember(session.filters) { activeLabels(session.filters) }
+
+    // What the app understood from the words themselves, and what would narrow
+    // them further. Both are suggestions, never silent changes: a hint is only
+    // applied when it is tapped, and a refinement only when it is added.
+    val plan = remember(session.query) { Query.read(session.query) }
+    val hints = remember(session.query, session.filters, settings.smartHints) {
+        if (!settings.smartHints) emptyList() else plan.applicable(session.filters)
+    }
+    // Keyed on the results themselves: a refreshed feed of the same size would
+    // otherwise keep the previous feed's suggestions.
+    val refinements = remember(session.results, session.query, settings.smartHints) {
+        if (!settings.smartHints) emptyList() else Query.refinements(session.results, plan)
+    }
+    // A three-word query that found nothing is usually one word too specific.
+    val simplerQuery = remember(session.query) {
+        val words = session.query.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (words.size >= 3) words.take(2).joinToString(" ") else null
+    }
+    val sourcesAnswered = remember(session.results) {
+        session.results.map { it.provider }.distinct().size
+    }
     val loading = session.results.isEmpty() && !session.done
     val density = settings.gridDensity
     val bottomBar = settings.barPlacement == BarPlacement.BOTTOM
@@ -288,7 +312,9 @@ fun SearchScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    WellButton(onClick = onBack) { Icon(Ico.Back, Ink.thread, Modifier.size(24.dp)) }
+                    WellButton(onClick = onBack, label = "Back") {
+                        Icon(Ico.Back, Ink.thread, Modifier.size(24.dp))
+                    }
                     if (bottomBar) {
                         // The field lives at the bottom; the strap shows what
                         // you're looking at, so nothing on top competes with it.
@@ -335,6 +361,58 @@ fun SearchScreen(
                 verticalItemSpacing = density.gapDp.dp,
                 modifier = Modifier.fillMaxSize(),
             ) {
+                if (hints.isNotEmpty() || refinements.isNotEmpty()) {
+                    item(span = StaggeredGridItemSpan.FullLine, key = "smart") {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (hints.isNotEmpty()) {
+                                Text(
+                                    "READ FROM YOUR WORDS",
+                                    style = TextStyle(
+                                        color = Ink.onLeather.copy(alpha = 0.72f),
+                                        fontFamily = cinzel(),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 9.sp,
+                                        letterSpacing = 2.sp,
+                                    ),
+                                    modifier = Modifier.padding(start = 2.dp),
+                                )
+                                Row(
+                                    Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    hints.forEach { hint ->
+                                        SearitchChip("use $hint", false) {
+                                            onSearch(session.query, plan.applyTo(session.filters))
+                                        }
+                                    }
+                                }
+                            }
+                            if (refinements.isNotEmpty()) {
+                                Text(
+                                    "NARROW IT",
+                                    style = TextStyle(
+                                        color = Ink.onLeather.copy(alpha = 0.72f),
+                                        fontFamily = cinzel(),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 9.sp,
+                                        letterSpacing = 2.sp,
+                                    ),
+                                    modifier = Modifier.padding(start = 2.dp),
+                                )
+                                Row(
+                                    Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    refinements.forEach { word ->
+                                        SearitchChip("+ $word", false) {
+                                            onSearch("${session.query} $word", session.filters)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 if (active.isNotEmpty() || facets.isNotEmpty()) {
                     item(span = StaggeredGridItemSpan.FullLine, key = "chips") {
                         Row(
@@ -359,6 +437,8 @@ fun SearchScreen(
                             message = session.error ?: "No images matched. Try a broader keyword or loosen a filter.",
                             isError = session.error != null,
                             active = active,
+                            simpler = simplerQuery,
+                            onSimplify = { q -> onSearch(q, session.filters) },
                             onRemove = { onSearch(session.query, it) },
                             onClear = { onSearch(session.query, settings.baseFilters()) },
                             onRetry = { session.retry() },
@@ -369,7 +449,9 @@ fun SearchScreen(
                         item(span = StaggeredGridItemSpan.FullLine, key = "count") {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    "${session.results.size}${if (session.hasMore || !session.done) "+" else ""} RESULTS · “${session.query.uppercase()}”",
+                                    "${session.results.size}${if (session.hasMore || !session.done) "+" else ""} RESULTS · " +
+                                        "${sourcesAnswered} SOURCE${if (sourcesAnswered == 1) "" else "S"} · " +
+                                        "“${session.query.uppercase()}”",
                                     style = TextStyle(
                                         color = Ink.onLeather,
                                         fontFamily = cinzel(),
@@ -764,6 +846,9 @@ private fun EmptyState(
     message: String,
     isError: Boolean,
     active: List<Pair<String, Filters>>,
+    /** A shorter version of the query, when there was one to shorten. */
+    simpler: String?,
+    onSimplify: (String) -> Unit,
     onRemove: (Filters) -> Unit,
     onClear: () -> Unit,
     onRetry: () -> Unit,
@@ -790,6 +875,15 @@ private fun EmptyState(
             ) {
                 active.forEach { (label, without) -> SearitchChip("Remove $label", false) { onRemove(without) } }
                 if (active.size > 1) SearitchChip("Clear all filters", true) { onClear() }
+            }
+        }
+        if (simpler != null && !isError) {
+            Spacer(Modifier.height(10.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SearitchChip("Try “$simpler”", true) { onSimplify(simpler) }
             }
         }
         if (isError || active.isEmpty()) {

@@ -35,7 +35,15 @@ import coil3.size.Precision
 sealed interface Screen {
     data object Home : Screen
     data class Search(val session: SearchSession) : Screen
-    data class Detail(val image: SearitchImage) : Screen
+    /**
+     * A photo, plus the strip it was opened from: the results grid, or the
+     * similar-photos strip of another photo. Carrying it means stepping left and
+     * right stays inside the list the person was actually looking at.
+     */
+    data class Detail(
+        val image: SearitchImage,
+        val strip: List<SearitchImage> = emptyList(),
+    ) : Screen
 }
 
 /**
@@ -102,9 +110,20 @@ fun App(settings: SettingsState = remember { SettingsState.load() }) {
      * Changing filters while results are on screen replaces the top of the
      * stack instead of stacking a second search screen.
      */
-    fun openSearch(query: String, filters: Filters) {
+    fun openSearch(rawQuery: String, rawFilters: Filters) {
+        // A file-format word is a statement about the file, not a preference:
+        // "transparent png of a fox" can only mean PNG, so it is applied and
+        // shows up as a chip the user can remove. Colour and size words stay
+        // suggestions — "red panda" is not a request for red things.
+        val plan = Query.read(rawQuery)
+        val query = plan.text.ifEmpty { rawQuery.trim() }
+        val filters = if (rawFilters.type == TypeFilter.ANY && plan.type != null) {
+            rawFilters.copy(type = plan.type)
+        } else {
+            rawFilters
+        }
         val session = host.forKey(query, filters)
-        Recents.add(query)
+        Recents.add(query, filters)
         val top = backStack.lastOrNull()
         if (top is Screen.Search) {
             backStack[backStack.lastIndex] = Screen.Search(session)
@@ -116,6 +135,24 @@ fun App(settings: SettingsState = remember { SettingsState.load() }) {
     // Android back button / gesture pops the stack; at Home it lets the system
     // close the app, which is what a gesture-nav user expects.
     PlatformBackHandler(enabled = backStack.size > 1) { pop() }
+
+    /*
+     * The strip a photo was opened from: the results of the search underneath it
+     * when the photo is one of them, otherwise the photo on its own. Stepping
+     * replaces the top of the stack rather than pushing, so Back still returns
+     * to the grid instead of walking back through every picture looked at.
+     */
+    val openDetail = backStack.lastOrNull() as? Screen.Detail
+    val strip: List<SearitchImage> = openDetail?.strip
+        ?.takeIf { list -> list.any { it.id == openDetail.image.id } }
+        ?: listOfNotNull(openDetail?.image)
+    val detailIndex = openDetail?.let { d -> strip.indexOfFirst { it.id == d.image.id } } ?: -1
+
+    fun stepDetail(delta: Int) {
+        val next = detailIndex + delta
+        if (detailIndex < 0 || next !in strip.indices) return
+        backStack[backStack.lastIndex] = Screen.Detail(strip[next])
+    }
 
     SearitchTheme(settings) {
         // system bars follow the hide, so the app never shows a grey scrim seam
@@ -186,7 +223,7 @@ fun App(settings: SettingsState = remember { SettingsState.load() }) {
                             is Screen.Search -> SearchScreen(
                                 session = screen.session,
                                 onSearch = ::openSearch,
-                                onOpenImage = { push(Screen.Detail(it)) },
+                                onOpenImage = { push(Screen.Detail(it, screen.session.results)) },
                                 onBack = { pop() },
                                 onOpenSettings = { settingsOpen = true },
                                 settingsOpen = settingsOpen,
@@ -194,7 +231,24 @@ fun App(settings: SettingsState = remember { SettingsState.load() }) {
 
                             is Screen.Detail -> DetailScreen(
                                 img = screen.image,
-                                onOpenImage = { push(Screen.Detail(it)) },
+                                onOpenImage = { image, from -> push(Screen.Detail(image, from)) },
+                                position = if (detailIndex >= 0) detailIndex else -1,
+                                total = strip.size,
+                                onPrev = { stepDetail(-1) },
+                                onNext = { stepDetail(+1) },
+                                onTag = { tag -> openSearch(tag, settings.value.baseFilters()) },
+                                onFindColour = { hex ->
+                                    // Stay inside the words that are already on
+                                    // screen and narrow them by the colour: the
+                                    // picture was found by those words, so they
+                                    // are the right context for "more like this
+                                    // blue".
+                                    val search = backStack.lastOrNull { it is Screen.Search } as? Screen.Search
+                                    val query = search?.session?.query
+                                        ?: Api.subjectLabel(screen.image).ifBlank { Api.cleanQuery(screen.image.title) }
+                                    val base = search?.session?.filters ?: Filters()
+                                    openSearch(query, base.copy(color = "", colorHex = hex))
+                                },
                                 onBack = { pop() },
                                 onOpenSettings = { settingsOpen = true },
                                 settingsOpen = settingsOpen,

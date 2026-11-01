@@ -1,53 +1,48 @@
-## 2.0.0 — 1 Nov 2026
+## 2.1.0 — 2 Nov 2026
 
-`versionCode 21` · `versionName 2.0.0`
+`versionCode 22` · `versionName 2.1.0`
 
-**Wallpaper is your phone's job now.** The button used to call Android's
-wallpaper API directly. It set the picture, full stop: no crop, no choice of home
-screen or lock screen, no route to a live wallpaper — none of what the setter
-already on the phone does. It now hands the file to that setter, the one you
-reach from Gallery. On HyperOS/MIUI and stock Android the full-screen wallpaper
-editor opens with home / lock / both; on the devices whose cropper isn't
-exported, the "Set as" sheet appears instead. The direct set stays as the last
-resort, so the button is never dead. The file travels as a `content://` URI
-through a `FileProvider`, which is the only kind Android 7 and later will accept.
+**The search box reads before it asks.** Words used to be a pipe: whatever was
+typed went to fourteen sources unchanged, and the only intelligence sat
+downstream, throwing away answers that didn't mention the query. A query is now
+read once, before a single request goes out. Format words — `png`,
+`transparent`, `svg` — describe the file itself, so they are applied and appear
+as a chip you can remove. Colour, size and intent words — `red`, `4k`,
+`wallpaper` — are *offered* rather than silently applied, because "red panda" is
+not a request for red things; the home screen shows what it understood as you
+type, and the results screen offers it as one tap.
 
-**Any colour, not twelve.** The named swatches stay, because the sources that
-filter by colour only understand names — Bing's index, Openverse's colour word.
-Beside them is a wheel: drag anywhere in it, read the hex, tap the disc to use
-it. A wheel pick goes to Wallhaven as its exact hex and reaches the name-only
-sources as its nearest name, so a pick never quietly searches for nothing. The
-filter chip says which colour is on and what it is near.
+**Results are ranked now, not just mixed.** Every result is scored on how much
+of the query it actually names — the title counts for most, then the source's
+curated tags, then its site — plus how large it is, whether its shape suits what
+was asked, and how much the source knows about what it is showing: a museum
+catalogue outranks a reposted thumbnail. Near-copies arriving from different
+sources collapse onto their best copy, and no single source may own a page —
+except when one source is all you selected, where all of it comes through.
 
-**Transparent pictures get a black stage.** A PNG with holes in it sat on cream
-paper in the detail view, and the paper showed through the holes and tinted
-everything. Transparent formats — PNG, WebP, SVG — now get full black behind them
-in the detail view. Grid cards keep their paper mount: at thumbnail size the
-shape reads fine and the gallery stays one material.
+**Sources are measured instead of assumed.** Each one now carries a moving
+average of how long it takes, and its timeout follows that measurement with
+headroom, so a source that answers in 400 ms is no longer waited on for six
+seconds. Settings → Sources lists every source with its speed, how much it
+returned and whether it is resting after failures.
 
-**Coming back from a photo lands where you left it.** A photo used to replace the
-results screen. That tore the grid down; on the way back it was rebuilt and the
-shared-element flight measured it before the scroll had been restored, so the
-picture flew to the wrong place and only found its slot once you dragged the
-list. The results screen now stays composed and the photo opens over it, with
-only the photo animating in — the card it came from never stops existing, so the
-return always has somewhere true to land.
+**Refinements come from what came back.** Tags shared by several returned
+pictures, and not already in your words, are offered as "narrow it" chips. They
+are the catalogue's own vocabulary, not a generated guess.
 
-**Search is tidier and reads stems.** Queries are cleaned once — stray quotes,
-doubled spaces, non-breaking spaces — so every source is asked the same thing,
-and matching now accepts a five-letter stem, so `cathedral` also answers
-`cathedrals`. One image loader is configured for the whole app with an inexact
-decode size, so a card at 212 px and a card at 218 px share one cached bitmap
-instead of keeping two.
+**A photo steps through the strip it came from.** Previous and next in the detail
+strap, with a counter, staying inside the grid or the similar-photos strip you
+opened it from. Back still returns to where you were, not through every picture
+you looked at.
 
-**Cards hold their size.** A grid card used to take its shape from the metadata,
-then animate to the shape of whatever bitmap arrived a moment later. Every card
-in a staggered column therefore grew or shrank shortly after appearing, which
-reflowed the column under your thumb while scrolling — and, on the way back from
-a photo, left the card you opened somewhere else until the grid settled. The
-frame is now fixed by the size the source reports, so a rebuilt grid lays out at
-identical heights and the saved scroll lands on the same card, first frame.
+**The detail page reads the picture.** Its decoded colours are offered as
+swatches — tap one to search exactly that colour — and its own tags are buttons,
+so "common dolphin" asks the catalogue for what it called the thing.
 
-**Housekeeping.** Only this release exists. Earlier ones are gone, along with the
-stale build archive that had been sitting in the repository, and the release
-workflow now watches this branch alone.
+**Recent searches keep their filters.** Tapping a past search restores the
+format, colour and orientation it was made with, instead of replaying the words
+alone. A search that found nothing now offers a shorter version of itself.
+
+**Faster.** Cards decode at card size rather than at source size, the next page
+is fetched before you reach the bottom, and an empty result no longer waits for
+the slowest source to fail.

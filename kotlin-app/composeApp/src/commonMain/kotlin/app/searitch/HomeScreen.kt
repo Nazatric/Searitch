@@ -49,6 +49,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 
+/** What the landing screen offers before you have any history of your own. */
+private val STARTERS = listOf(
+    "moonrise",
+    "bengal tiger",
+    "art nouveau poster",
+    "deep sea",
+    "brutalist architecture",
+    "wildflowers",
+    "vintage map",
+    "aurora",
+)
+
 /** Minimal landing screen: a cream wordmark pressed into the hide, and one search field. */
 @Composable
 fun HomeScreen(
@@ -69,12 +81,30 @@ fun HomeScreen(
     )
     val pal = LocalPalette.current
 
-    fun go(text: String = input) {
+    // What the app makes of the words as they are typed. Only shown when it has
+    // something to say, and only ever a note about the query — the search itself
+    // is unchanged until it is run.
+    val plan = remember(input) { Query.read(input) }
+    val understood = remember(input, settings.smartHints) {
+        if (input.isBlank() || !settings.smartHints) emptyList() else plan.understood()
+    }
+
+    // While typing, offer the searches already made that match — the app's own
+    // history is the only suggestion list it can be honest about.
+    val matches = remember(input) { if (input.isBlank()) emptyList() else Recents.matching(input) }
+
+    fun go(text: String = input, filters: Filters? = null) {
         val q = text.trim()
         if (q.isEmpty()) return
-        Recents.add(q)
         recents = Recents.list()
-        onSearch(q, settings.baseFilters())
+        onSearch(q, filters ?: settings.baseFilters())
+    }
+
+    fun open(recent: RecentSearch) {
+        input = recent.query
+        recents = Recents.list()
+        // A remembered search comes back with the filters it was made with.
+        onSearch(recent.query, recent.filters)
     }
 
     Box(Modifier.fillMaxSize().leatherSurface(tall = true)) {
@@ -165,6 +195,73 @@ fun HomeScreen(
                 ) { Icon(Ico.Search, pal.brassText, Modifier.size(18.dp)) }
             }
 
+            if (matches.isNotEmpty()) {
+                FlowRow(
+                    Modifier.padding(top = 14.dp).widthIn(max = 460.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    matches.forEach { r ->
+                        SearitchChip(r.query, selected = false) { open(r) }
+                    }
+                }
+            }
+
+            if (understood.isNotEmpty()) {
+                FlowRow(
+                    Modifier.padding(top = 14.dp).widthIn(max = 460.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    understood.forEach { hint ->
+                        Text(
+                            hint.uppercase(),
+                            style = TextStyle(
+                                color = Ink.onLeatherSoft,
+                                fontFamily = cinzel(),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.sp,
+                                letterSpacing = 1.6.sp,
+                            ),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .border(1.dp, Ink.onLeatherSoft.copy(alpha = 0.22f), CircleShape)
+                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                        )
+                    }
+                }
+            }
+
+            if (recents.isEmpty()) {
+                // First run: something to press that is a real search, not a
+                // demo. These are ordinary words that all fourteen sources have
+                // material for.
+                Column(
+                    Modifier.padding(top = 26.dp).widthIn(max = 460.dp).fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        "TRY",
+                        style = TextStyle(
+                            color = Ink.onLeatherSoft,
+                            fontFamily = cinzel(),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            letterSpacing = 2.5.sp,
+                        ),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        STARTERS.forEach { q ->
+                            SearitchChip(q, selected = false) { go(q) }
+                        }
+                    }
+                }
+            }
+
             if (recents.isNotEmpty()) {
                 Column(
                     Modifier.padding(top = 26.dp).widthIn(max = 460.dp).fillMaxWidth(),
@@ -206,11 +303,8 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        recents.forEach { q ->
-                            SearitchChip(q, selected = false) {
-                                input = q
-                                go(q)
-                            }
+                        recents.forEach { r ->
+                            SearitchChip(r.query, selected = false) { open(r) }
                         }
                     }
                 }

@@ -47,4 +47,11 @@ actual object PlatformStore {
     actual suspend fun filesSize(): Long = runCatching {
         listFiles().sumOf { (readFile(it)?.length ?: 0).toLong() * 2 }
     }.getOrDefault(0L)
+
+    /** The browser owns its own image cache; there is nothing here to measure. */
+    actual suspend fun imageCacheSize(): Long = 0L
+
+    actual suspend fun clearImageCache() {
+        // Nothing to clear: the browser's HTTP cache is not ours to touch.
+    }
 }

@@ -12,6 +12,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image as ComposeImage
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.calculateZoom
@@ -34,6 +35,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
@@ -132,7 +134,17 @@ private enum class SaveState { Idle, Saving, Saved, Failed }
 @Composable
 fun DetailScreen(
     img: SearitchImage,
-    onOpenImage: (SearitchImage) -> Unit,
+    /** Opens another photo, with the strip it was shown in. */
+    onOpenImage: (SearitchImage, List<SearitchImage>) -> Unit,
+    /** Search this colour — the same words as now, filtered to that hex. */
+    onFindColour: (String) -> Unit,
+    /** Search one of the picture's own tags. */
+    onTag: (String) -> Unit,
+    /** Where this picture sits in the strip it was opened from, if it did. */
+    position: Int = -1,
+    total: Int = 0,
+    onPrev: (() -> Unit)? = null,
+    onNext: (() -> Unit)? = null,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit,
     settingsOpen: Boolean,
@@ -246,6 +258,12 @@ fun DetailScreen(
     val decodedAlpha = remember(decodedHero) { decodedHero?.decodedAlpha() }
     val hasAlpha = alphaHint || decodedAlpha == true
 
+    // The colours the picture is made of, sampled once per decoded image.
+    val palette: List<Int> = remember(decodedHero) {
+        val decoded = decodedHero ?: return@remember emptyList()
+        runCatching { decoded.palette(5) }.getOrDefault(emptyList())
+    }
+
     /*
      * The frame is sized to the picture, and the picture is drawn whole.
      *
@@ -283,7 +301,9 @@ fun DetailScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            WellButton(onClick = onBack) { Icon(Ico.Back, Ink.thread, Modifier.size(24.dp)) }
+            WellButton(onClick = onBack, label = "Back to the search") {
+                Icon(Ico.Back, Ink.thread, Modifier.size(24.dp))
+            }
             Text(
                 img.title,
                 style = TextStyle(
@@ -297,6 +317,38 @@ fun DetailScreen(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            // Stepping through the strip the photo came from, without going back
+            // and losing your place in it.
+            if (position > 0 && total > 0) {
+                Text(
+                    "${position + 1}/$total",
+                    color = Ink.onLeatherSoft,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                onPrev?.let { prev ->
+                    WellButton(
+                        onClick = prev,
+                        enabled = position > 0,
+                        size = 34.dp,
+                        label = "Previous picture",
+                    ) {
+                        Icon(Ico.Back, Ink.thread, Modifier.size(16.dp))
+                    }
+                }
+                onNext?.let { next ->
+                    Box(Modifier.graphicsLayer { rotationZ = 180f }) {
+                        WellButton(
+                            onClick = next,
+                            enabled = position < total - 1,
+                            size = 34.dp,
+                            label = "Next picture",
+                        ) {
+                            Icon(Ico.Back, Ink.thread, Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
             GearButton(onClick = onOpenSettings, open = settingsOpen)
         }
 
@@ -432,6 +484,41 @@ fun DetailScreen(
                                     letterSpacing = 1.2.sp,
                                 )
                             }
+                        }
+                    }
+
+                    if (palette.isNotEmpty()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 12.dp, start = 4.dp, end = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        ) {
+                            Text(
+                                "COLOURS",
+                                color = Ink.faint,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.4.sp,
+                            )
+                            palette.forEach { rgb ->
+                                Box(
+                                    Modifier
+                                        .size(20.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(rgb))
+                                        .border(1.dp, Color.Black.copy(alpha = 0.28f), CircleShape)
+                                        .clickable {
+                                            haptics.tap()
+                                            onFindColour(hexString(rgb))
+                                        },
+                                )
+                            }
+                            Spacer(Modifier.width(2.dp))
+                            Text(
+                                "tap to search it",
+                                color = Ink.faint,
+                                fontSize = 10.sp,
+                            )
                         }
                     }
 
@@ -590,6 +677,31 @@ fun DetailScreen(
                                 modifier = Modifier.padding(top = 3.dp),
                             )
                         }
+                        /*
+                         * The picture's own tags, as searches. This is the one
+                         * "more like this" that isn't a guess: the words come
+                         * from the catalogue record that described the picture
+                         * in the first place, so tapping "common dolphin" asks
+                         * for what the source itself called it.
+                         */
+                        val tagChips = shown.tags
+                            .map { it.substringBefore('-').trim() }
+                            .filter { it.length in 3..26 && it.any(Char::isLetter) }
+                            .distinct()
+                            .take(4)
+                        if (tagChips.isNotEmpty()) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(top = 10.dp),
+                            ) {
+                                tagChips.forEach { tag ->
+                                    SearitchChip(tag, selected = false) {
+                                        onTag(tag)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -611,7 +723,9 @@ fun DetailScreen(
                             }
                         } else {
                             itemsIndexed(rel, key = { _, r -> "rel-${r.id}" }) { index, r ->
-                                PhotoCard(r, index, shared = false) { onOpenImage(it) }
+                                PhotoCard(r, index, shared = false) { picked ->
+                                    onOpenImage(picked, related.orEmpty())
+                                }
                             }
                         }
                 }

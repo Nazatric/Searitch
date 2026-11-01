@@ -183,6 +183,9 @@ data class Filters(
     val safe: Boolean = true,
     val antiAi: Boolean = true,
 ) {
+    /** The colour as it is set right now, named or hex — for comparisons. */
+    fun colour(): String = colorHex.ifEmpty { color }
+
     val activeCount: Int
         get() = listOf(
             type != TypeFilter.ANY,
