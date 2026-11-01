@@ -11,7 +11,7 @@ on:
     branches:
       # the working branch Arena is on; keep the last one too so a rebase or a
       # branch switch doesn't silently stop the build
-      - "arena/c0796c2f-searitch"
+      - "arena/103d832b-searitch"
     paths:
       - "kotlin-app/**"
       - ".github/workflows/release-android.yml"

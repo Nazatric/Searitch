@@ -259,6 +259,22 @@ fun SearchScreen(
 
     val facets = remember(session.results, session.filters) { buildFacets(session.results, session.filters) }
     val active = remember(session.filters) { activeLabels(session.filters) }
+
+    // What the app understood from the words themselves, and what would narrow
+    // them further. Both are suggestions, never silent changes: a hint is only
+    // applied when it is tapped, and a refinement only when it is added.
+    val plan = remember(session.query) { Query.read(session.query) }
+    val hints = remember(session.query, session.filters) {
+        val withHints = plan.applyTo(session.filters)
+        // Only the parts that would actually change something are worth a chip.
+        if (withHints == session.filters) emptyList() else plan.understood()
+    }
+    val refinements = remember(session.results.size, session.query) {
+        Query.refinements(session.results, plan)
+    }
+    val sourcesAnswered = remember(session.results) {
+        session.results.map { it.provider }.distinct().size
+    }
     val loading = session.results.isEmpty() && !session.done
     val density = settings.gridDensity
     val bottomBar = settings.barPlacement == BarPlacement.BOTTOM
@@ -335,6 +351,58 @@ fun SearchScreen(
                 verticalItemSpacing = density.gapDp.dp,
                 modifier = Modifier.fillMaxSize(),
             ) {
+                if (hints.isNotEmpty() || refinements.isNotEmpty()) {
+                    item(span = StaggeredGridItemSpan.FullLine, key = "smart") {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (hints.isNotEmpty()) {
+                                Text(
+                                    "READ FROM YOUR WORDS",
+                                    style = TextStyle(
+                                        color = Ink.onLeather.copy(alpha = 0.72f),
+                                        fontFamily = cinzel(),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 9.sp,
+                                        letterSpacing = 2.sp,
+                                    ),
+                                    modifier = Modifier.padding(start = 2.dp),
+                                )
+                                Row(
+                                    Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    hints.forEach { hint ->
+                                        SearitchChip("use $hint", false) {
+                                            onSearch(session.query, plan.applyTo(session.filters))
+                                        }
+                                    }
+                                }
+                            }
+                            if (refinements.isNotEmpty()) {
+                                Text(
+                                    "NARROW IT",
+                                    style = TextStyle(
+                                        color = Ink.onLeather.copy(alpha = 0.72f),
+                                        fontFamily = cinzel(),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 9.sp,
+                                        letterSpacing = 2.sp,
+                                    ),
+                                    modifier = Modifier.padding(start = 2.dp),
+                                )
+                                Row(
+                                    Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    refinements.forEach { word ->
+                                        SearitchChip("+ $word", false) {
+                                            onSearch("${session.query} $word", session.filters)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 if (active.isNotEmpty() || facets.isNotEmpty()) {
                     item(span = StaggeredGridItemSpan.FullLine, key = "chips") {
                         Row(
@@ -369,7 +437,9 @@ fun SearchScreen(
                         item(span = StaggeredGridItemSpan.FullLine, key = "count") {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    "${session.results.size}${if (session.hasMore || !session.done) "+" else ""} RESULTS · “${session.query.uppercase()}”",
+                                    "${session.results.size}${if (session.hasMore || !session.done) "+" else ""} RESULTS · " +
+                                        "${sourcesAnswered} SOURCE${if (sourcesAnswered == 1) "" else "S"} · " +
+                                        "“${session.query.uppercase()}”",
                                     style = TextStyle(
                                         color = Ink.onLeather,
                                         fontFamily = cinzel(),

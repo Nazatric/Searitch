@@ -102,7 +102,18 @@ fun App(settings: SettingsState = remember { SettingsState.load() }) {
      * Changing filters while results are on screen replaces the top of the
      * stack instead of stacking a second search screen.
      */
-    fun openSearch(query: String, filters: Filters) {
+    fun openSearch(rawQuery: String, rawFilters: Filters) {
+        // A file-format word is a statement about the file, not a preference:
+        // "transparent png of a fox" can only mean PNG, so it is applied and
+        // shows up as a chip the user can remove. Colour and size words stay
+        // suggestions — "red panda" is not a request for red things.
+        val plan = Query.read(rawQuery)
+        val query = plan.text.ifEmpty { rawQuery.trim() }
+        val filters = if (rawFilters.type == TypeFilter.ANY && plan.type != null) {
+            rawFilters.copy(type = plan.type)
+        } else {
+            rawFilters
+        }
         val session = host.forKey(query, filters)
         Recents.add(query)
         val top = backStack.lastOrNull()

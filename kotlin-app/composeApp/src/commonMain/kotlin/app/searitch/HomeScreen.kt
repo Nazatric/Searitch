@@ -69,6 +69,12 @@ fun HomeScreen(
     )
     val pal = LocalPalette.current
 
+    // What the app makes of the words as they are typed. Only shown when it has
+    // something to say, and only ever a note about the query — the search itself
+    // is unchanged until it is run.
+    val plan = remember(input) { Query.read(input) }
+    val understood = remember(input) { if (input.isBlank()) emptyList() else plan.understood() }
+
     fun go(text: String = input) {
         val q = text.trim()
         if (q.isEmpty()) return
@@ -163,6 +169,31 @@ fun HomeScreen(
                         },
                     contentAlignment = Alignment.Center,
                 ) { Icon(Ico.Search, pal.brassText, Modifier.size(18.dp)) }
+            }
+
+            if (understood.isNotEmpty()) {
+                FlowRow(
+                    Modifier.padding(top = 14.dp).widthIn(max = 460.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    understood.forEach { hint ->
+                        Text(
+                            hint.uppercase(),
+                            style = TextStyle(
+                                color = Ink.onLeatherSoft,
+                                fontFamily = cinzel(),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.sp,
+                                letterSpacing = 1.6.sp,
+                            ),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .border(1.dp, Ink.onLeatherSoft.copy(alpha = 0.22f), CircleShape)
+                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                        )
+                    }
+                }
             }
 
             if (recents.isNotEmpty()) {

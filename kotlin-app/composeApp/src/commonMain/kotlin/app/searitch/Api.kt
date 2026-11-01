@@ -500,10 +500,34 @@ object Api {
     /* Circuit breaker (clock-free, portable): a source that times out twice
        in a row is skipped for the next few searches, so a dead upstream can
        never stall the UI again. */
-    private class Health(var fails: Int = 0, var skipLeft: Int = 0)
+    private class Health(
+        var fails: Int = 0,
+        var skipLeft: Int = 0,
+        /** Moving average of how long this source takes, in ms; 0 = not known yet. */
+        var latency: Long = 0,
+        var lastResults: Int = 0,
+        var lastOk: Boolean = false,
+        var answered: Int = 0,
+    )
 
     private val health = mutableMapOf<String, Health>()
 
+    /** One line of what the app currently believes about a source. */
+    data class SourceStatus(
+        val name: String,
+        val latencyMs: Long,
+        val lastResults: Int,
+        val lastOk: Boolean,
+        val skipped: Boolean,
+        val failures: Int,
+    )
+
+    /**
+     * A source that timed out twice in a row is left alone for the next few
+     * searches, so a dead upstream can't keep stalling the grid. The counter is
+     * decremented per search rather than on a clock, which keeps this identical
+     * on every platform.
+     */
     private fun shouldSkip(name: String): Boolean {
         val h = health[name] ?: return false
         return if (h.skipLeft > 0) {
@@ -512,24 +536,63 @@ object Api {
         } else false
     }
 
-    private fun recordResult(name: String, ok: Boolean) {
+    private fun recordResult(name: String, ok: Boolean, elapsedMs: Long = 0, count: Int = 0) {
         val h = health.getOrPut(name) { Health() }
+        h.lastOk = ok
+        h.lastResults = count
+        h.answered++
         if (ok) {
             h.fails = 0
             h.skipLeft = 0
+            // Only a real answer teaches the timeout anything; a failure is what
+            // the timeout exists to survive, not a measurement of it.
+            if (elapsedMs > 0) {
+                h.latency = if (h.latency == 0L) elapsedMs else (h.latency * 4 + elapsedMs) / 5
+            }
         } else {
             h.fails++
             if (h.fails >= 2) h.skipLeft = 5
         }
     }
 
-    private fun budgetFor(name: String): Long = when (name) {
-        "openverse" -> 4_000
-        "bing" -> 5_000
-        // Yandex renders a full page of results server-side; it is a big answer.
-        "yandex" -> 6_000
-        "loc" -> 5_000
-        else -> 3_500
+    /** What the Settings sheet shows: which sources are fast, dead, or skipped. */
+    fun sourceReport(): List<SourceStatus> = ALL_SOURCES.map { (name, _) ->
+        val h = health[name]
+        SourceStatus(
+            name = name,
+            latencyMs = h?.latency ?: 0,
+            lastResults = h?.lastResults ?: 0,
+            lastOk = h?.lastOk ?: false,
+            skipped = (h?.skipLeft ?: 0) > 0,
+            failures = h?.fails ?: 0,
+        )
+    }
+
+    /** Human name for a source key, for the diagnostics panel. */
+    fun sourceTitle(name: String): String = ALL_SOURCES.firstOrNull { it.first == name }?.second ?: name
+
+    /**
+     * How long a source is given.
+     *
+     * A fixed budget is either too short for a slow museum API or too long for a
+     * dead CDN. Each source gets a floor from what it normally costs, and the
+     * budget then follows its own measured latency with headroom for a slow
+     * network — so a source that has been answering in 400 ms is not waited on
+     * for six seconds, and one that needs four seconds is not cut off at three.
+     */
+    private fun budgetFor(name: String): Long {
+        val floor = when (name) {
+            "openverse" -> 4_000
+            "bing" -> 5_000
+            // Yandex renders a full page of results server-side; it is a big answer.
+            "yandex" -> 6_000
+            "loc" -> 5_000
+            else -> 3_500
+        }
+        val measured = health[name]?.latency ?: 0L
+        if (measured <= 0L) return floor
+        // 2.5× the usual time, never below the floor, never above 8 s.
+        return (measured * 5 / 2).coerceIn(floor, 8_000L)
     }
 
     /** Sources whose API takes a colour and really filters by it. */
@@ -548,6 +611,24 @@ object Api {
         ProviderFilter.NASA, ProviderFilter.MET, ProviderFilter.AIC,
         ProviderFilter.CLEVELAND, ProviderFilter.LOC, ProviderFilter.EUROPEANA,
         ProviderFilter.VAM,
+    )
+
+    /** Every source the app knows, with the name a person would use for it. */
+    private val ALL_SOURCES = listOf(
+        "bing" to "Bing",
+        "yandex" to "Yandex",
+        "openverse" to "Openverse",
+        "wikimedia" to "Wikimedia Commons",
+        "wallhaven" to "Wallhaven",
+        "flickr" to "Flickr",
+        "inaturalist" to "iNaturalist",
+        "nasa" to "NASA",
+        "met" to "The Met",
+        "aic" to "Art Institute of Chicago",
+        "cleveland" to "Cleveland Museum",
+        "loc" to "Library of Congress",
+        "europeana" to "Europeana",
+        "vam" to "V&A Museum",
     )
 
     /**
@@ -601,28 +682,53 @@ object Api {
         .replace(Regex("\\s+"), " ")
         .trim()
 
+    /**
+     * A search with no query gate.
+     *
+     * Only for the similar-photos pipeline: there the words are a *subject*
+     * taken from the picture itself, and a neighbour that doesn't repeat the
+     * word in its title is still a neighbour. Every user-facing search goes
+     * through [search] or [searchStream], gate and all.
+     */
+    suspend fun rawSearch(q: String, filters: Filters, page: Int): List<SearitchImage> =
+        coroutineScope {
+            val plan = Query.read(q)
+            providers(plan.text, filters, page)
+                .filterNot { shouldSkip(it.first) }
+                .map { (name, run) ->
+                    async {
+                        val started = currentTimeMillis()
+                        val r = runCatching { withTimeout(budgetFor(name)) { run() } }
+                        val raw = r.getOrDefault(emptyList())
+                        recordResult(name, r.isSuccess, currentTimeMillis() - started, raw.size)
+                        raw.filter { passesFilters(it, filters) }
+                    }
+                }
+                .awaitAll()
+                .let { lists -> Ranker.dedupe(Ranker.mix(lists, plan), plan) }
+        }
+
     suspend fun search(q: String, filters: Filters, page: Int): List<SearitchImage> =
         coroutineScope {
-            val query = cleanQuery(q)
-            val lists = providers(query, filters, page).filterNot { shouldSkip(it.first) }.map { (name, run) ->
+            val plan = Query.read(q)
+            val lists = providers(plan.text, filters, page).filterNot { shouldSkip(it.first) }.map { (name, run) ->
                 async {
+                    val started = currentTimeMillis()
                     val r = runCatching { withTimeout(budgetFor(name)) { run() } }
-                    recordResult(name, r.isSuccess)
+                    val raw = r.getOrDefault(emptyList())
+                    recordResult(name, r.isSuccess, currentTimeMillis() - started, raw.size)
                     // Only results that answer the query are allowed through.
-                    gate(query, r.getOrDefault(emptyList()))
+                    gate(plan, raw)
                 }
             }.awaitAll()
 
-            // Interleave sources + dedupe, then apply honest local filters.
-            val out = mutableListOf<SearitchImage>()
-            val seen = mutableSetOf<String>()
-            val max = lists.maxOfOrNull { it.size } ?: 0
-            for (i in 0 until max) for (list in lists) {
-                val img = list.getOrNull(i) ?: continue
-                if (img.thumb.isEmpty() || img.full.isEmpty() || !seen.add(img.full)) continue
-                if (passesFilters(img, filters)) out += img
-            }
-            out
+            // Rank inside each source, then interleave sources under a cap, then
+            // collapse near-copies onto their best copy. Filters decide what is
+            // allowed; the ranking only decides the order of what is left.
+            Ranker.dedupe(
+                Ranker.mix(lists, plan),
+                plan,
+            ).filter { passesFilters(it, filters) }
         }
 
 
@@ -1419,21 +1525,8 @@ object Api {
      * with something other than the query — that is a junk batch, and the whole
      * batch goes rather than filling the grid with noise.
      */
-    private val GATE_STOP = setOf(
-        "the", "a", "an", "and", "or", "of", "for", "in", "on", "at", "to", "with",
-        "my", "me", "image", "images", "photo", "photos", "picture", "pictures",
-        "pic", "pics", "wallpaper", "wallpapers", "hd", "4k", "free",
-    )
-
-    private fun queryTerms(q: String): List<String> {
-        val all = q.lowercase()
-            .split(Regex("[^\\p{L}\\p{N}]+"))
-            .filter { it.length > 1 }
-            .distinct()
-        // "wallpaper" is filler in "ocean wallpaper", but when it is the whole
-        // query it is the only thing the results can be checked against.
-        return all.filterNot { it in GATE_STOP }.ifEmpty { all }
-    }
+    /** The words a result must answer, for a cleaned query. */
+    fun termsOf(q: String): List<String> = Query.read(q).terms
 
     /** How many of [terms] this result actually mentions. */
     private fun relevanceOf(img: SearitchImage, terms: List<String>): Int {
@@ -1462,8 +1555,8 @@ object Api {
      * order of how much of the query it mentions. A batch where almost nothing
      * matches is discarded whole.
      */
-    private fun gate(q: String, list: List<SearitchImage>): List<SearitchImage> {
-        val terms = queryTerms(q)
+    private fun gate(plan: Query.Plan, list: List<SearitchImage>): List<SearitchImage> {
+        val terms = plan.terms
         if (terms.isEmpty() || list.isEmpty()) return list
         val scored = list.map { it to relevanceOf(it, terms) }
         val kept = scored.filter { it.second > 0 }
@@ -1497,8 +1590,8 @@ object Api {
      * interleaved across sources so the first screen is a real mix of sites.
      */
     fun searchStream(q: String, filters: Filters, page: Int): Flow<List<SearitchImage>> = channelFlow {
-        val query = cleanQuery(q)
-        val active = providers(query, filters, page).filterNot { shouldSkip(it.first) }
+        val plan = Query.read(q)
+        val active = providers(plan.text, filters, page).filterNot { shouldSkip(it.first) }
         if (active.isEmpty()) return@channelFlow
 
         val lock = Mutex()
@@ -1513,20 +1606,27 @@ object Api {
             flushed = true
             val self = currentCoroutineContext()[Job]
             timer?.takeIf { it !== self }?.cancel()
-            val mixed = interleave(gathered)
+            // Ranked, mixed across sources, and with near-copies collapsed —
+            // the same order a completed search would have produced.
+            val mixed = Ranker.dedupe(Ranker.mix(gathered, plan), plan)
             if (mixed.isNotEmpty()) send(mixed)
         }
 
         active.forEach { (name, run) ->
             launch {
+                val started = currentTimeMillis()
                 val r = runCatching { withTimeout(budgetFor(name)) { run() } }
-                recordResult(name, r.isSuccess)
+                val raw = r.getOrDefault(emptyList())
+                recordResult(name, r.isSuccess, currentTimeMillis() - started, raw.size)
                 lock.withLock {
-                    val gated = gate(query, r.getOrDefault(emptyList()))
+                    val gated = gate(plan, raw)
                     val fresh = gated.filter { passesFilters(it, filters) && seen.add(it.full) }
                     if (fresh.isNotEmpty()) {
                         if (flushed) {
-                            send(fresh)
+                            // After the opening flush each source's answer goes
+                            // out as it arrives; it is ordered within itself so
+                            // the best of that answer is on top.
+                            send(Ranker.order(fresh, plan))
                         } else {
                             gathered += fresh
                             if (timer == null) timer = launch { delay(GATHER_MS); lock.withLock { flush() } }
@@ -1581,10 +1681,15 @@ object Api {
         if (subject.isEmpty()) return emptyList()
         // Two words carry the subject without pinning the search so tightly that
         // a source returns nothing; a wider pass is made only when it does.
-        val pool = search(subject.take(2).joinToString(" "), Filters(), 1)
+        // Relatedness is not the user's search: the gate would throw away a
+        // perfectly good neighbour for not containing the word, so the subject
+        // is applied here instead, on the hydrated result (see rankBySubject).
+        val pool = runCatching { rawSearch(subject.take(2).joinToString(" "), Filters(), 1) }
+            .getOrDefault(emptyList())
         val narrow = rankBySubject(src, pool, subject)
         if (narrow.size >= 8) return narrow
-        return rankBySubject(src, pool + search(subject.first(), Filters(), 1), subject)
+        val wider = runCatching { rawSearch(subject.first(), Filters(), 1) }.getOrDefault(emptyList())
+        return rankBySubject(src, pool + wider, subject)
     }
 
     /**
