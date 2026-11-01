@@ -4,8 +4,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -64,8 +65,16 @@ fun ColorWheel(
     var hue by remember { mutableFloatStateOf(210f) }
     var sat by remember { mutableFloatStateOf(0.70f) }
 
-    // A wheel pick that came from a saved filter puts the marker back where it was.
+    // Dragging emits a colour per frame, but most frames land on the same 8-bit
+    // shade. Only a real change is reported, so the sheet isn't rebuilt 60 times
+    // a second for nothing.
+    val lastSent = remember { mutableStateOf("") }
+
+    // A wheel pick that came from a saved filter puts the marker back where it
+    // was. A value this wheel just emitted is skipped, otherwise quantising it
+    // back to hue/saturation would nudge the marker under the finger.
     LaunchedEffect(picked) {
+        if (picked == lastSent.value) return@LaunchedEffect
         val rgb = parseHex(picked) ?: return@LaunchedEffect
         val hsv = rgbToHsv(rgb)
         if (hsv[1] > 0.05f) {
@@ -87,19 +96,35 @@ fun ColorWheel(
         // atan2 runs clockwise from 3 o'clock, and so does the sweep gradient.
         hue = ((atan2(dy, dx) * 180f / PI.toFloat()) + 360f) % 360f
         sat = (dist / radius).coerceIn(0f, 1f)
-        onPick(hexString(hsvToRgb(hue, sat, 1f)))
+        val hex = hexString(hsvToRgb(hue, sat, 1f))
+        if (hex != lastSent.value) {
+            lastSent.value = hex
+            onPick(hex)
+        }
     }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier
                 .size(156.dp)
+                // One gesture handler for tap and drag. Two detectors on the same
+                // node fight over the pointer: the tap one holds the down event
+                // until it sees an up, and a drag then starts late or not at all.
                 .pointerInput(Unit) {
-                    detectTapGestures { pickAt(it.x, it.y, size.width.toFloat()) }
-                }
-                .pointerInput(Unit) {
-                    detectDragGestures { change, _ ->
-                        pickAt(change.position.x, change.position.y, size.width.toFloat())
+                    awaitEachGesture {
+                        val width = size.width.toFloat()
+                        val down = awaitFirstDown()
+                        pickAt(down.position.x, down.position.y, width)
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { change ->
+                                if (change.pressed) {
+                                    pickAt(change.position.x, change.position.y, width)
+                                    change.consume()
+                                }
+                            }
+                            if (event.changes.none { it.pressed }) break
+                        }
                     }
                 },
         ) {
