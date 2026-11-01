@@ -229,12 +229,27 @@ fun tiltOf(id: String): Float {
 }
 
 @Composable
-fun PhotoCard(img: SearitchImage, index: Int, onClick: (SearitchImage) -> Unit) {
+fun PhotoCard(
+    img: SearitchImage,
+    index: Int,
+    /**
+     * Whether this card is the source of the shared-element flight.
+     *
+     * Only the results grid needs it. The strip of similar photos inside a photo
+     * does not: those cards sit in a grid that exists in two contents at once
+     * while one photo hands over to another, and two visible owners for one key
+     * is exactly what makes Compose draw a copy in a floating layer.
+     */
+    shared: Boolean = true,
+    /** False for a feed that has already been seen — its cards just exist. */
+    animateIn: Boolean = true,
+    onClick: (SearitchImage) -> Unit,
+) {
     // Only the first screenful animates in; anything later just exists.
     val motionOn = LocalSettings.current.value.motion
-    var entered by remember(img.id) { mutableStateOf(index >= 24 || !motionOn) }
-    LaunchedEffect(img.id, motionOn) {
-        if (!motionOn) { entered = true; return@LaunchedEffect }
+    var entered by remember(img.id) { mutableStateOf(!animateIn || index >= 24 || !motionOn) }
+    LaunchedEffect(img.id, motionOn, animateIn) {
+        if (!motionOn || !animateIn) { entered = true; return@LaunchedEffect }
         if (!entered) {
             delay((index % 10) * 40L)
             entered = true
@@ -254,14 +269,23 @@ fun PhotoCard(img: SearitchImage, index: Int, onClick: (SearitchImage) -> Unit) 
     val pal = LocalPalette.current
     val rotation = if (style == CardStyle.PRINT) tilt * appear else 0f
 
-    // The frame follows the picture, not the other way round: the metadata ratio
-    // is the placeholder, the decoded bitmap's ratio wins the moment it lands.
+    /*
+     * The frame is sized once, from what the source already told us, and it then
+     * stays that size for as long as the card exists.
+     *
+     * It used to start at the metadata ratio and animate to the ratio of whatever
+     * bitmap arrived. Every card in a staggered grid therefore grew or shrank a
+     * few hundred milliseconds after it appeared — which reflowed the column
+     * under your thumb while you scrolled, and, on the way back from a photo,
+     * moved the card you had opened somewhere else entirely until the grid
+     * settled. The reported ratio is the honest one (the renditions are already
+     * fetched crop-free), so it is simply used.
+     *
+     * A source that reports no size at all is the only case that still adjusts,
+     * and it snaps rather than animates, so nothing is ever in motion by itself.
+     */
+    val geometryKnown = img.width > 0 && img.height > 0
     var loadedRatio by remember(img.id) { mutableStateOf(cardRatio(img)) }
-    val shownRatio by animateFloatAsState(
-        targetValue = loadedRatio,
-        animationSpec = spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow),
-        label = "cardRatio",
-    )
 
     Column(
         modifier = Modifier
@@ -287,7 +311,7 @@ fun PhotoCard(img: SearitchImage, index: Int, onClick: (SearitchImage) -> Unit) 
     ) {
         Box(
             Modifier
-                .sharedPhoto(img.id)
+                .then(if (shared) Modifier.sharedPhoto(img.id) else Modifier)
                 .clip(RoundedCornerShape(if (style == CardStyle.BARE) 6.dp else 2.dp))
                 .background(pal.paperWell),
         ) {
@@ -302,11 +326,11 @@ fun PhotoCard(img: SearitchImage, index: Int, onClick: (SearitchImage) -> Unit) 
                 // 120Hz: no multi-megapixel downscales on the main thread
                 onSuccess = { state ->
                     val bmp = state.result.image
-                    if (bmp.width > 0 && bmp.height > 0) {
+                    if (!geometryKnown && bmp.width > 0 && bmp.height > 0) {
                         loadedRatio = (bmp.width.toFloat() / bmp.height).coerceIn(0.34f, 2.8f)
                     }
                 },
-                modifier = Modifier.fillMaxWidth().aspectRatio(shownRatio),
+                modifier = Modifier.fillMaxWidth().aspectRatio(loadedRatio),
             )
         }
     }

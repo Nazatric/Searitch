@@ -163,6 +163,13 @@ class SearchSession(
     var scrollIndex by mutableIntStateOf(0)
     var scrollOffset by mutableIntStateOf(0)
 
+    /**
+     * Whether this feed's cards have already made their entrance. Coming back
+     * from a photo must not replay it: cards fading in again from nothing reads
+     * as the grid having lost its place, even when the scroll is exact.
+     */
+    var entranceDone by mutableStateOf(false)
+
     var started by mutableStateOf(false)
 
     /** Bumped by "Try again" so the loader re-runs without a new session. */

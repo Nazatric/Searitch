@@ -247,7 +247,7 @@ jobs:
           cat > notes.md <<'EOF'
           ### Searitch 2.0.0
 
-          `versionCode 20` · `versionName 2.0.0`
+          `versionCode 21` · `versionName 2.0.0`
 
           **Wallpaper goes through your phone now.** The button used to call
           Android's wallpaper API directly: it set the picture and gave you no

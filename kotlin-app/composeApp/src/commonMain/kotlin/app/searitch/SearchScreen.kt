@@ -166,6 +166,15 @@ fun SearchScreen(
             .collect { (i, o) -> session.scrollIndex = i; session.scrollOffset = o }
     }
 
+    // The entrance is a first-impression thing. Once this feed has been on
+    // screen, coming back to it must show it already there — cards fading in
+    // again from nothing reads as the grid having lost its place, even when the
+    // scroll offset is exact.
+    LaunchedEffect(session.id) {
+        kotlinx.coroutines.delay(900)
+        session.entranceDone = true
+    }
+
     /* Cache-first load: a feed we already have paints instantly, then (only if
        it's stale) a quiet refresh streams in behind it. */
     LaunchedEffect(session.id, session.attempt) {
@@ -396,7 +405,13 @@ fun SearchScreen(
                             // grid can recycle a slot instead of building a new one.
                             contentType = { _, _ -> "card-${settings.cardStyle}" },
                         ) { index, img ->
-                            PhotoCard(img, index) { onOpenImage(it) }
+                            PhotoCard(
+                                img = img,
+                                index = index,
+                                // A feed that has already been on screen keeps its
+                                // cards still when you come back to it.
+                                animateIn = !session.entranceDone,
+                            ) { onOpenImage(it) }
                         }
                         if (session.loadingMore) {
                             item(span = StaggeredGridItemSpan.FullLine, key = "more") {
