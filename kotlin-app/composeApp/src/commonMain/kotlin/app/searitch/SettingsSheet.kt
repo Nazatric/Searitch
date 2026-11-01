@@ -262,7 +262,6 @@ fun Cog(
  * sheet is deliberately not a "draft + Apply" form: that hid the effect of half
  * the settings behind a button press.
  */
-@Composable
 /** The one green in the app: a source's dot, and nothing else. */
 private val SourceOk = Color(0xFF4F7D4A)
 

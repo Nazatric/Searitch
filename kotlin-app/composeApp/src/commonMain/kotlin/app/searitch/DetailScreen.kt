@@ -12,6 +12,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image as ComposeImage
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.calculateZoom
@@ -250,8 +251,9 @@ fun DetailScreen(
     val hasAlpha = alphaHint || decodedAlpha == true
 
     // The colours the picture is made of, sampled once per decoded image.
-    val palette = remember(decodedHero) {
-        runCatching { decodedHero?.palette(5) }.getOrDefault(emptyList())
+    val palette: List<Int> = remember(decodedHero) {
+        val decoded = decodedHero ?: return@remember emptyList()
+        runCatching { decoded.palette(5) }.getOrDefault(emptyList())
     }
 
     /*
