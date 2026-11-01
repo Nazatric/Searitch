@@ -124,7 +124,7 @@ private fun activeLabels(f: Filters): List<Pair<String, Filters>> = buildList {
     if (f.type != TypeFilter.ANY) add(f.type.label to f.copy(type = TypeFilter.ANY))
     if (f.aspect != AspectFilter.ANY) add(f.aspect.label to f.copy(aspect = AspectFilter.ANY))
     if (f.size != SizeFilter.ANY) add("${f.size.label} size" to f.copy(size = SizeFilter.ANY))
-    COLOR_OPTIONS.firstOrNull { it.key == f.color }?.let { add(it.label to f.copy(color = "")) }
+    colorLabel(f)?.let { add(it to f.copy(color = "", colorHex = "")) }
     if (f.license != LicenseFilter.ANY) add(f.license.label to f.copy(license = LicenseFilter.ANY))
     if (f.provider != ProviderFilter.ALL) add(f.provider.label to f.copy(provider = ProviderFilter.ALL))
     if (!f.safe) add("Safe search: OFF" to f.copy(safe = true))
@@ -338,7 +338,12 @@ fun SearchScreen(
                     }
                 }
                 when {
-                    loading -> items(8) { i -> SkeletonCard(SKELETON_RATIOS[i % SKELETON_RATIOS.size], i) }
+                    loading -> items(
+                        count = 8,
+                        contentType = { "skeleton" },
+                    ) { i ->
+                        SkeletonCard(SKELETON_RATIOS[i % SKELETON_RATIOS.size], i)
+                    }
 
                     session.results.isEmpty() -> item(span = StaggeredGridItemSpan.FullLine, key = "empty") {
                         EmptyState(
@@ -384,7 +389,13 @@ fun SearchScreen(
                                 }
                             }
                         }
-                        itemsIndexed(session.results, key = { _, img -> img.id }) { index, img ->
+                        itemsIndexed(
+                            items = session.results,
+                            key = { _, img -> img.id },
+                            // Cards of the same style are interchangeable, so the
+                            // grid can recycle a slot instead of building a new one.
+                            contentType = { _, _ -> "card-${settings.cardStyle}" },
+                        ) { index, img ->
                             PhotoCard(img, index) { onOpenImage(it) }
                         }
                         if (session.loadingMore) {
@@ -618,7 +629,9 @@ private fun FilterSheet(
                     verticalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
                     COLOR_OPTIONS.forEach { c ->
-                        val selected = draft.color == c.key
+                        // Picking a named swatch clears a wheel pick, and the
+                        // other way round: one colour at a time.
+                        val selected = draft.color == c.key && draft.colorHex.isEmpty()
                         Box(
                             Modifier
                                 .size(34.dp)
@@ -629,10 +642,21 @@ private fun FilterSheet(
                                     if (selected) Brass.base else Color.Black.copy(alpha = 0.25f),
                                     CircleShape,
                                 )
-                                .clickable { onChange(draft.copy(color = if (selected) "" else c.key)) },
+                                .clickable {
+                                    onChange(
+                                        if (selected) draft.copy(color = "")
+                                        else draft.copy(color = c.key, colorHex = ""),
+                                    )
+                                },
                         )
                     }
                 }
+                Spacer(Modifier.size(14.dp))
+                ColorWheel(
+                    picked = draft.colorHex,
+                    onPick = { hex -> onChange(draft.copy(color = "", colorHex = hex)) },
+                    onClear = { onChange(draft.copy(colorHex = "", color = "")) },
+                )
             }
             Column {
                 FilterSection("LICENSE", LicenseFilter.entries, draft.license, { it.label }) {

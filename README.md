@@ -28,9 +28,9 @@ a source that answers with something else entirely contributes nothing.
 | | |
 | --- | --- |
 | **Fourteen sources** | Bing and Yandex (full web), Openverse, Wikimedia Commons, Wallhaven, Flickr, iNaturalist, NASA, The Met, Art Institute of Chicago, Cleveland Museum of Art, Library of Congress, Europeana, the V&A |
-| **Filters** | file type, orientation, size, twelve-colour palette, licence, source, safe search, anti-AI |
+| **Filters** | file type, orientation, size, colour (twelve named swatches and a full wheel), licence, source, safe search, anti-AI |
 | **Smart facets** | the app counts what it actually got back and offers drill-downs with real numbers — *JPG only 12*, *High-res 7* — instead of guessing |
-| **Detail view** | full image, creator, licence, dimensions, download, similar images |
+| **Detail view** | full image, creator, licence, dimensions, download, similar images, share, and "set as wallpaper" through your phone's own setter |
 | **Downloads** | streamed straight into `Download/Searitch` through MediaStore on Android 10+, no permission needed |
 
 Each request goes from your device straight to the source.
@@ -66,6 +66,9 @@ That table is the contract the filters work to, not decoration:
 - **Safe search switches off what it can't verify.** Flickr's public feed has no
   rating metadata, so it is skipped while strict safe search is on instead of
   being trusted.
+- **A wheel colour reaches every source honestly.** The wheel keeps its exact
+  hex: Wallhaven filters by it, Bing takes its nearest name, Openverse searches
+  the nearest name as a word. Nothing that can't do colour is asked.
 
 > [!NOTE]
 > Bing, Wallhaven and Flickr send no CORS headers, so those three answer in the
@@ -73,6 +76,11 @@ That table is the contract the filters work to, not decoration:
 > in both.
 
 ### How pictures are drawn
+
+Transparent formats (PNG, WebP, SVG) get a full black stage behind them in the
+detail view, so a cut-out logo or a sticker is seen as it is, not tinted by the
+paper underneath. Grid cards keep their paper mount — at thumbnail size the shape
+reads fine and the gallery stays one material.
 
 Frames follow pictures, not the other way round. A card or the detail panel
 starts at the shape the source reported, then takes the shape of the bitmap that
@@ -140,9 +148,11 @@ Home → Search → Detail, on a real back stack. Android back and gesture navig
 pop it; at Home they close the app, the way any other app behaves.
 
 Returning from a photo lands exactly where you left — same results, same paging,
-same scroll position. Results live in a session above the navigation graph, so
-screens can be rebuilt without re-running a search. Photos fly between the grid
-and the detail hero; the search field glides between screens.
+same scroll position. The photo opens *over* the results rather than replacing
+them, so the grid is never rebuilt and the card the photo came from never moves;
+photos fly between the grid and the detail hero, and the search field glides
+between screens. Results live in a session above the navigation graph, so a
+screen can be rebuilt without re-running a search.
 
 Two cache layers keep a repeat search instant:
 
@@ -159,8 +169,8 @@ Grab the APK for your device from [Releases](../../releases/latest).
 
 | File | For |
 | --- | --- |
-| `Searitch-v0.8-arm64-v8a.apk` | almost every phone since 2017 |
-| `Searitch-v0.8-armeabi-v7a.apk` | older 32-bit devices |
+| `Searitch-v2.0.0-arm64-v8a.apk` | almost every phone since 2017 |
+| `Searitch-v2.0.0-armeabi-v7a.apk` | older 32-bit devices |
 
 Release APKs are signed with the key committed at
 `kotlin-app/keystore/searitch-release.keystore`, so every release carries the same
@@ -168,9 +178,9 @@ certificate and installs straight over the one before it. The keystore is attach
 to each release so any build can be verified.
 
 > [!IMPORTANT]
-> Releases before v0.8 were signed with a key generated per build, so their
-> certificates differ. If you are coming from v0.7 or earlier, uninstall once —
-> after that, upgrades install over the top.
+> Every build from v0.8 onwards — this one included — is signed with the same
+> key, so upgrades install straight over the top. A build from before v0.8 was
+> signed per build; if you are coming from one of those, uninstall once.
 
 ## Build
 

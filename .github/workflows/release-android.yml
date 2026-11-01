@@ -6,15 +6,12 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v0.13"
+        default: "v2.0.0"
   push:
     branches:
       # the working branch Arena is on; keep the last one too so a rebase or a
       # branch switch doesn't silently stop the build
-      - "arena/80728bfa-searitch"
-      - "arena/942b364c-searitch"
-      - "arena/5a0be822-searitch"
-      - "arena/8747d8f4-searitch"
+      - "arena/437bd433-searitch"
     paths:
       - "kotlin-app/**"
       - ".github/workflows/release-android.yml"
@@ -180,9 +177,9 @@ jobs:
           for apk in $(find "$APP_DIR/composeApp/build/outputs/apk/release" -name "*.apk" | sort); do
             base=$(basename "$apk")
             case "$base" in
-              *arm64*)   name="Searitch-v0.13-arm64-v8a.apk" ;;
-              *armeabi*) name="Searitch-v0.13-armeabi-v7a.apk" ;;
-              *)         name="Searitch-v0.13-$base" ;;
+              *arm64*)   name="Searitch-v2.0.0-arm64-v8a.apk" ;;
+              *armeabi*) name="Searitch-v2.0.0-armeabi-v7a.apk" ;;
+              *)         name="Searitch-v2.0.0-$base" ;;
             esac
             echo "--- $base -> $name"
 
@@ -234,50 +231,51 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || 'v0.13' }}
+          TAG: ${{ github.event.inputs.tag || 'v2.0.0' }}
         run: |
           set -euo pipefail
           cat > notes.md <<'EOF'
-          ### v0.13 — results answer the query, and Yandex joins
+          ### Searitch 2.0.0
 
-          `versionCode 13` · `versionName 1.9.0`
+          `versionCode 20` · `versionName 2.0.0`
 
-          **The beach photos under "android"**
+          **Wallpaper goes through your phone now.** The button used to call
+          Android's wallpaper API directly: it set the picture and gave you no
+          say in it — no crop, no home-or-lock choice, nothing the phone itself
+          offers. It now hands the file to the setter your device ships with, the
+          same one you reach from Gallery. On HyperOS/MIUI and stock Android that
+          is the full-screen wallpaper editor; anywhere else it is the "Set as"
+          sheet. The old direct set stays as the last resort, so the button is
+          never dead.
 
-          Two causes. Bing's `/images/async` answers some single words with a
-          trending set instead of the query — ask it for `android` and it returns
-          "Another Round" film posters — and nothing ever checked a result
-          against the words that were typed, so whatever a source said went into
-          the grid. Every result is now scored against the query across its
-          title, site, page address, file address and tags. A result that
-          mentions none of it is dropped; a source whose whole page misses the
-          query is discarded rather than shown; results that match are ordered by
-          how much of the query they contain.
+          **Any colour, not twelve.** The named swatches are still there, because
+          the sources that filter by colour only understand names. Beside them is
+          a wheel: drag anywhere in it, read the hex, and use it. A wheel pick
+          goes to Wallhaven as its exact hex and reaches the name-only sources as
+          its nearest name, so a pick never quietly searches for nothing.
 
-          **Yandex**
+          **Transparent pictures get a black stage.** A PNG with holes in it sat
+          on cream paper in the detail view, which tinted everything you could
+          see through. Transparent formats now get full black behind them in the
+          detail view. Cards keep their paper, where the shape reads fine.
 
-          ImageSearchMan searches Google, Bing and Yandex. Google's results are
-          base64 strings assembled by its JavaScript and its legacy JSON endpoint
-          now 404s; DuckDuckGo answers a plain client with a
-          `botnet_challenge`; Baidu answers `Forbid spider access`; Yahoo renders
-          its grid in JavaScript. None of the four can serve a plain HTTP client,
-          so none is claimed. Yandex renders its full result page server-side
-          with real titles, real dimensions and the original file, and it answers
-          the query it was given. Fourteen sources now.
+          **Coming back from a photo lands where you left it.** A photo used to
+          replace the results screen, so the grid was rebuilt on the way back and
+          the shared-element flight measured it before it had restored its
+          scroll — the picture flew to the wrong spot and only found its place
+          once you dragged the list. The results screen now stays alive and the
+          photo opens over it, so the card the photo came from never stops
+          existing.
 
-          **The photo panel scrolls**
-
-          v0.12's pinch-to-scale used the general transform detector, which reads
-          a one-finger drag as a pan and swallowed the gesture — the biggest thing
-          on the detail page was the one part that couldn't be dragged. Two
-          fingers zoom and pan the picture; one finger scrolls the page again.
+          **Search tidies what you type** — stray quotes and double spaces — and
+          matches word stems, so "cathedral" finds "cathedrals".
 
           ### Assets
 
           | File | For |
           | --- | --- |
-          | `Searitch-v0.13-arm64-v8a.apk` | almost every phone since 2017 |
-          | `Searitch-v0.13-armeabi-v7a.apk` | older 32-bit devices |
+          | `Searitch-v2.0.0-arm64-v8a.apk` | almost every phone since 2017 |
+          | `Searitch-v2.0.0-armeabi-v7a.apk` | older 32-bit devices |
           | `searitch-release.keystore` | signing key — password `searitch2026`, alias `searitch` |
           | `SHA256SUMS.txt` | checksums |
           EOF
@@ -287,7 +285,7 @@ jobs:
             --title "Searitch $TAG" \
             --notes-file notes.md \
             --target "$GITHUB_SHA" \
-            out/Searitch-v0.13-arm64-v8a.apk \
-            out/Searitch-v0.13-armeabi-v7a.apk \
+            out/Searitch-v2.0.0-arm64-v8a.apk \
+            out/Searitch-v2.0.0-armeabi-v7a.apk \
             out/searitch-release.keystore \
             out/SHA256SUMS.txt

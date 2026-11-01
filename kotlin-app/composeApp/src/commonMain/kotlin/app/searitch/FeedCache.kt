@@ -66,6 +66,7 @@ object FeedCache {
             append(query.trim().lowercase())
             append('|').append(filters.type).append('|').append(filters.aspect)
             append('|').append(filters.size).append('|').append(filters.color)
+            append('|').append(filters.colorHex)
             append('|').append(filters.license).append('|').append(filters.provider)
             append('|').append(filters.safe).append('|').append(filters.antiAi)
         }
