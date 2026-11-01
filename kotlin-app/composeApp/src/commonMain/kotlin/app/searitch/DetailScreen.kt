@@ -301,7 +301,9 @@ fun DetailScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            WellButton(onClick = onBack) { Icon(Ico.Back, Ink.thread, Modifier.size(24.dp)) }
+            WellButton(onClick = onBack, label = "Back to the search") {
+                Icon(Ico.Back, Ink.thread, Modifier.size(24.dp))
+            }
             Text(
                 img.title,
                 style = TextStyle(
@@ -325,13 +327,23 @@ fun DetailScreen(
                     fontWeight = FontWeight.Bold,
                 )
                 onPrev?.let { prev ->
-                    WellButton(enabled = position > 0, size = 34.dp, onClick = prev) {
+                    WellButton(
+                        onClick = prev,
+                        enabled = position > 0,
+                        size = 34.dp,
+                        label = "Previous picture",
+                    ) {
                         Icon(Ico.Back, Ink.thread, Modifier.size(16.dp))
                     }
                 }
                 onNext?.let { next ->
                     Box(Modifier.graphicsLayer { rotationZ = 180f }) {
-                        WellButton(enabled = position < total - 1, size = 34.dp, onClick = next) {
+                        WellButton(
+                            onClick = next,
+                            enabled = position < total - 1,
+                            size = 34.dp,
+                            label = "Next picture",
+                        ) {
                             Icon(Ico.Back, Ink.thread, Modifier.size(16.dp))
                         }
                     }

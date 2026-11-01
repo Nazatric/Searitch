@@ -37,6 +37,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -136,6 +138,8 @@ fun WellButton(
     /** A dead end (first picture, last picture) still shows, but doesn't invite. */
     enabled: Boolean = true,
     size: Dp = 44.dp,
+    /** Spoken by a screen reader; the button itself is a drawing, not a word. */
+    label: String? = null,
     content: @Composable () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -152,7 +156,12 @@ fun WellButton(
                 interactionSource = interaction,
                 indication = null,
                 enabled = enabled,
+                onClickLabel = label,
                 onClick = onClick,
+            )
+            .then(
+                if (label == null) Modifier
+                else Modifier.semantics { contentDescription = label },
             ),
         contentAlignment = Alignment.Center,
     ) { content() }

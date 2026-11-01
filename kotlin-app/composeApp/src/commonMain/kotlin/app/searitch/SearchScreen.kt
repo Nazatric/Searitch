@@ -312,7 +312,9 @@ fun SearchScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    WellButton(onClick = onBack) { Icon(Ico.Back, Ink.thread, Modifier.size(24.dp)) }
+                    WellButton(onClick = onBack, label = "Back") {
+                        Icon(Ico.Back, Ink.thread, Modifier.size(24.dp))
+                    }
                     if (bottomBar) {
                         // The field lives at the bottom; the strap shows what
                         // you're looking at, so nothing on top competes with it.
