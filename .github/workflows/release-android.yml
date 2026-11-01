@@ -55,6 +55,12 @@ jobs:
             [ -f "$LOG" ] && grep -E "^e: |^w: |Unresolved|Type mismatch|error:" "$LOG" | head -120 || echo "no log"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          # Annotations are readable from the API, so the first errors travel
+          # there too — that is the only channel a headless session can read.
+          [ -f "$LOG" ] && grep -E "^e: |^w: .*(deprecat|never used)" "$LOG" | head -40 | while IFS= read -r line; do
+            msg=$(printf '%s' "$line" | tr '\n' ' ' | cut -c1-900)
+            echo "::error title=Kotlin::$msg"
+          done || true
 
   build:
     name: Build arm64-v8a + armeabi-v7a APKs
@@ -151,6 +157,10 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::error title=Build failed::See the job summary for Kotlin diagnostics (run $GITHUB_RUN_ID)."
+          grep -E "^e: " "$LOG" | head -40 | while IFS= read -r line; do
+            msg=$(printf '%s' "$line" | tr '\n' ' ' | cut -c1-900)
+            echo "::error title=Kotlin::$msg"
+          done || true
 
       - name: Sign APKs and verify them
         run: |
