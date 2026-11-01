@@ -86,7 +86,7 @@ enum class BrassTone(
 @Serializable
 enum class DownloadQuality(val label: String, val hint: String) {
     ORIGINAL("Original file", "Whatever the source hosts — can be very large."),
-    LARGE("Large preview", "Caps around 2000px. Smaller, faster saves."),
+    LARGE("Screen-size", "The rendition the source publishes for screens — 2000 px on Wikimedia — and the original where there is none."),
 }
 
 @Immutable

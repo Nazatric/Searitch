@@ -48,6 +48,9 @@ actual object PlatformStore {
         listFiles().sumOf { (readFile(it)?.length ?: 0).toLong() * 2 }
     }.getOrDefault(0L)
 
+    /** localStorage holds only feeds, so this is the whole of the file store. */
+    actual suspend fun feedsSize(): Long = filesSize()
+
     /** The browser owns its own image cache; there is nothing here to measure. */
     actual suspend fun imageCacheSize(): Long = 0L
 

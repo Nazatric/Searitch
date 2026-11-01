@@ -94,6 +94,14 @@ actual object PlatformStore {
         Unit
     }
 
+    actual suspend fun feedsSize(): Long = withContext(Dispatchers.IO) {
+        runCatching {
+            var total = 0L
+            dir()?.listFiles()?.forEach { total += it.length() }
+            total
+        }.getOrDefault(0L)
+    }
+
     actual suspend fun filesSize(): Long = withContext(Dispatchers.IO) {
         runCatching {
             var total = 0L

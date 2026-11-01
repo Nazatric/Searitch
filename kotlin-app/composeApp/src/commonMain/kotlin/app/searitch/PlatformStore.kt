@@ -17,8 +17,8 @@ package app.searitch
  * releases behind the APK, which is worse than showing nothing.
  */
 object BuildInfo {
-    const val VERSION = "2.1.0"
-    const val VERSION_CODE = 22
+    const val VERSION = "2.1.1"
+    const val VERSION_CODE = 23
 }
 
 expect object PlatformStore {
@@ -33,6 +33,9 @@ expect object PlatformStore {
     suspend fun listFiles(): List<String>
     suspend fun clearFiles(): Unit
     suspend fun filesSize(): Long
+
+    /** Bytes of cached feeds alone — the image cache is measured separately. */
+    suspend fun feedsSize(): Long
 
     /** Bytes held by the decoded-image disk cache alone. */
     suspend fun imageCacheSize(): Long
