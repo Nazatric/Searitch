@@ -233,6 +233,7 @@ kotlin-app/composeApp/src/
     Api.kt            fourteen sources, relevance gate, filters, related
     App.kt            back stack, screen transitions, session host
     SearchScreen.kt   results grid, facets, filter sheet
+    ColorWheel.kt     the colour wheel, HSV conversion, hex round-trip
     DetailScreen.kt   hero image, metadata, download, similar
     HomeScreen.kt     wordmark, search field, recent searches
     SettingsSheet.kt  settings, the gear medallion, home-bar slider
@@ -241,7 +242,8 @@ kotlin-app/composeApp/src/
     Downloader.kt     download URL and filename rules
     Theme.kt          materials, textures, tiling, straps, stitches
     Components.kt     buttons, chips, photo prints, skeletons
-  androidMain/        activity, MediaStore downloads, prefs, system bars
+  androidMain/        activity, MediaStore downloads, wallpaper intent, prefs,
+                      system bars, decoded-alpha check
   wasmJsMain/         browser entry point
   commonMain/composeResources/   leather, paper, grain maps, Cinzel
 kotlin-app/tools/    icon and docs-image generators
