@@ -115,7 +115,7 @@ fun App(settings: SettingsState = remember { SettingsState.load() }) {
             rawFilters
         }
         val session = host.forKey(query, filters)
-        Recents.add(query)
+        Recents.add(query, filters)
         val top = backStack.lastOrNull()
         if (top is Screen.Search) {
             backStack[backStack.lastIndex] = Screen.Search(session)

@@ -440,6 +440,14 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
                         update(draft.copy(defaultAntiAi = it))
                     }
                     Hint("Applies to new searches. Filter chips in the field still override per search.")
+                    ToggleRow("Read the query", draft.smartHints) {
+                        update(draft.copy(smartHints = it))
+                    }
+                    Hint(
+                        "Off: the words are sent exactly as typed and nothing is suggested. " +
+                            "On: colour, format and intent are read from the words, and " +
+                            "refinements are offered from what actually came back.",
+                    )
                 }
 
                 Card("CACHE") {

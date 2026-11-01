@@ -267,13 +267,18 @@ fun SearchScreen(
     // them further. Both are suggestions, never silent changes: a hint is only
     // applied when it is tapped, and a refinement only when it is added.
     val plan = remember(session.query) { Query.read(session.query) }
-    val hints = remember(session.query, session.filters) {
-        val withHints = plan.applyTo(session.filters)
-        // Only the parts that would actually change something are worth a chip.
-        if (withHints == session.filters) emptyList() else plan.understood()
+    val hints = remember(session.query, session.filters, settings.smartHints) {
+        if (!settings.smartHints) emptyList() else plan.applicable(session.filters)
     }
-    val refinements = remember(session.results.size, session.query) {
-        Query.refinements(session.results, plan)
+    // Keyed on the results themselves: a refreshed feed of the same size would
+    // otherwise keep the previous feed's suggestions.
+    val refinements = remember(session.results, session.query, settings.smartHints) {
+        if (!settings.smartHints) emptyList() else Query.refinements(session.results, plan)
+    }
+    // A three-word query that found nothing is usually one word too specific.
+    val simplerQuery = remember(session.query) {
+        val words = session.query.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (words.size >= 3) words.take(2).joinToString(" ") else null
     }
     val sourcesAnswered = remember(session.results) {
         session.results.map { it.provider }.distinct().size
@@ -430,6 +435,8 @@ fun SearchScreen(
                             message = session.error ?: "No images matched. Try a broader keyword or loosen a filter.",
                             isError = session.error != null,
                             active = active,
+                            simpler = simplerQuery,
+                            onSimplify = { q -> onSearch(q, session.filters) },
                             onRemove = { onSearch(session.query, it) },
                             onClear = { onSearch(session.query, settings.baseFilters()) },
                             onRetry = { session.retry() },
@@ -837,6 +844,9 @@ private fun EmptyState(
     message: String,
     isError: Boolean,
     active: List<Pair<String, Filters>>,
+    /** A shorter version of the query, when there was one to shorten. */
+    simpler: String?,
+    onSimplify: (String) -> Unit,
     onRemove: (Filters) -> Unit,
     onClear: () -> Unit,
     onRetry: () -> Unit,
@@ -863,6 +873,15 @@ private fun EmptyState(
             ) {
                 active.forEach { (label, without) -> SearitchChip("Remove $label", false) { onRemove(without) } }
                 if (active.size > 1) SearitchChip("Clear all filters", true) { onClear() }
+            }
+        }
+        if (simpler != null && !isError) {
+            Spacer(Modifier.height(10.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SearitchChip("Try “$simpler”", true) { onSimplify(simpler) }
             }
         }
         if (isError || active.isEmpty()) {

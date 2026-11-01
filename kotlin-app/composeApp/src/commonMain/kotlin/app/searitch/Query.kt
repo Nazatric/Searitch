@@ -60,6 +60,20 @@ object Query {
         }
 
         /**
+         * What a tap on the hint could actually change.
+         *
+         * Intent is readable but not applicable — there is no "wallpaper" filter
+         * — so offering a chip for it would be a button that does nothing.
+         */
+        fun applicable(f: Filters): List<String> = buildList {
+            val would = applyTo(f)
+            if (would.colour() != f.colour()) colour?.let { add("colour: ${labelOf(it)}") }
+            if (would.type != f.type) type?.let { if (it != TypeFilter.ANY) add(it.label.lowercase()) }
+            val sizeHint = this@Plan.size
+            if (sizeHint != null && would.size != f.size) add(sizeHint.label.lowercase())
+        }
+
+        /**
          * The filters this plan would apply if the user asks for them. A hint is
          * never stronger than an explicit choice: anything already set wins.
          */

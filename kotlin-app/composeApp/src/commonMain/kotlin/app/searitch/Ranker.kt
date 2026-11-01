@@ -199,7 +199,19 @@ object Ranker {
         lists: List<List<SearitchImage>>,
         plan: Query.Plan,
         cap: Int = 6,
+    ): List<SearitchImage> = mixWithCap(lists, plan, cap)
+
+    /**
+     * The cap is a share of the page, not a fixed number: with one source
+     * selected the user asked for that source, so all of it may come through;
+     * with fourteen, no single one may own more than its share.
+     */
+    private fun mixWithCap(
+        lists: List<List<SearitchImage>>,
+        plan: Query.Plan,
+        requestedCap: Int,
     ): List<SearitchImage> {
+        val cap = if (lists.size <= 1) Int.MAX_VALUE else requestedCap.coerceAtLeast(60 / lists.size)
         val queues = lists
             .map { order(it, plan) }
             .filter { it.isNotEmpty() }

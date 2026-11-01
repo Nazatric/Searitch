@@ -107,6 +107,8 @@ data class AppSettings(
     val downloadQuality: DownloadQuality = DownloadQuality.ORIGINAL,
     val defaultSafe: Boolean = true,
     val defaultAntiAi: Boolean = true,
+    /** Read colour/format/intent out of the words, and suggest refinements. */
+    val smartHints: Boolean = true,
 ) {
     /** The filters a brand-new search starts from. */
     fun baseFilters(): Filters = Filters(safe = defaultSafe, antiAi = defaultAntiAi)

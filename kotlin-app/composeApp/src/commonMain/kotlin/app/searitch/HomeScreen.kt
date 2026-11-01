@@ -73,14 +73,26 @@ fun HomeScreen(
     // something to say, and only ever a note about the query — the search itself
     // is unchanged until it is run.
     val plan = remember(input) { Query.read(input) }
-    val understood = remember(input) { if (input.isBlank()) emptyList() else plan.understood() }
+    val understood = remember(input, settings.smartHints) {
+        if (input.isBlank() || !settings.smartHints) emptyList() else plan.understood()
+    }
 
-    fun go(text: String = input) {
+    // While typing, offer the searches already made that match — the app's own
+    // history is the only suggestion list it can be honest about.
+    val matches = remember(input) { if (input.isBlank()) emptyList() else Recents.matching(input) }
+
+    fun go(text: String = input, filters: Filters? = null) {
         val q = text.trim()
         if (q.isEmpty()) return
-        Recents.add(q)
         recents = Recents.list()
-        onSearch(q, settings.baseFilters())
+        onSearch(q, filters ?: settings.baseFilters())
+    }
+
+    fun open(recent: RecentSearch) {
+        input = recent.query
+        recents = Recents.list()
+        // A remembered search comes back with the filters it was made with.
+        onSearch(recent.query, recent.filters)
     }
 
     Box(Modifier.fillMaxSize().leatherSurface(tall = true)) {
@@ -171,6 +183,18 @@ fun HomeScreen(
                 ) { Icon(Ico.Search, pal.brassText, Modifier.size(18.dp)) }
             }
 
+            if (matches.isNotEmpty()) {
+                FlowRow(
+                    Modifier.padding(top = 14.dp).widthIn(max = 460.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    matches.forEach { r ->
+                        SearitchChip(r.query, selected = false) { open(r) }
+                    }
+                }
+            }
+
             if (understood.isNotEmpty()) {
                 FlowRow(
                     Modifier.padding(top = 14.dp).widthIn(max = 460.dp).fillMaxWidth(),
@@ -237,11 +261,8 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        recents.forEach { q ->
-                            SearitchChip(q, selected = false) {
-                                input = q
-                                go(q)
-                            }
+                        recents.forEach { r ->
+                            SearitchChip(r.query, selected = false) { open(r) }
                         }
                     }
                 }
