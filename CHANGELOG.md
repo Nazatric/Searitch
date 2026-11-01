@@ -1,6 +1,6 @@
 ## 2.0.0 — 1 Nov 2026
 
-`versionCode 20` · `versionName 2.0.0`
+`versionCode 21` · `versionName 2.0.0`
 
 **Wallpaper is your phone's job now.** The button used to call Android's
 wallpaper API directly. It set the picture, full stop: no crop, no choice of home
@@ -39,6 +39,14 @@ and matching now accepts a five-letter stem, so `cathedral` also answers
 `cathedrals`. One image loader is configured for the whole app with an inexact
 decode size, so a card at 212 px and a card at 218 px share one cached bitmap
 instead of keeping two.
+
+**Cards hold their size.** A grid card used to take its shape from the metadata,
+then animate to the shape of whatever bitmap arrived a moment later. Every card
+in a staggered column therefore grew or shrank shortly after appearing, which
+reflowed the column under your thumb while scrolling — and, on the way back from
+a photo, left the card you opened somewhere else until the grid settled. The
+frame is now fixed by the size the source reports, so a rebuilt grid lays out at
+identical heights and the saved scroll lands on the same card, first frame.
 
 **Housekeeping.** Only this release exists. Earlier ones are gone, along with the
 stale build archive that had been sitting in the repository, and the release

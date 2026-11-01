@@ -13,7 +13,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -118,11 +117,6 @@ fun App(settings: SettingsState = remember { SettingsState.load() }) {
     // close the app, which is what a gesture-nav user expects.
     PlatformBackHandler(enabled = backStack.size > 1) { pop() }
 
-    // The screen under any photo: the photo itself is an overlay, never a
-    // replacement, so the grid it came from is never torn down.
-    val base: Screen = backStack.lastOrNull { it !is Screen.Detail } ?: Screen.Home
-    val detail = backStack.lastOrNull() as? Screen.Detail
-
     SearitchTheme(settings) {
         // system bars follow the hide, so the app never shows a grey scrim seam
         PlatformSystemBars(
@@ -133,100 +127,78 @@ fun App(settings: SettingsState = remember { SettingsState.load() }) {
             /*
              * Photos and the search field fly between screens (shared elements).
              *
-             * A photo used to open by *replacing* the results screen, which threw
-             * the grid away — its cards were re-created on the way back, by which
-             * time the shared element had already been measured against a grid
-             * that had not restored its scroll yet. The picture therefore flew to
-             * the wrong place and only found its slot once the list was dragged.
-             * The results screen now stays composed underneath and the photo
-             * opens on top of it, so the card the photo came from never stops
-             * existing and the flight back always has somewhere true to land.
+             * One content at a time, which is the pattern shared elements are
+             * built for: a key that exists in two visible contents at once has no
+             * defined owner, and Compose draws it in a third, floating layer that
+             * never settles — which is exactly what a photo did when it was shown
+             * as an overlay above a still-composed grid.
+             *
+             * The grid no longer needs to be kept alive to come back to the right
+             * place: a card's frame is now fixed by the size its source reported,
+             * so a rebuilt grid lays out at identical heights and the saved
+             * scroll index lands on the same card, first frame.
              */
             SharedTransitionLayout {
-                Box(Modifier.fillMaxSize()) {
-                    AnimatedContent(
-                        targetState = base,
-                        contentKey = { s ->
-                            when (s) {
-                                is Screen.Home -> "home"
-                                is Screen.Search -> "search:${s.session.id}"
-                                // Never the base — a photo is an overlay.
-                                is Screen.Detail -> "detail"
-                            }
-                        },
-                        transitionSpec = {
-                            val reduce = !motion
-                            when {
-                                reduce -> fadeIn(tween(160)) togetherWith fadeOut(tween(120))
-                                else -> {
-                                    val pushing = targetState is Screen.Search
-                                    val spec = spring<IntOffset>(
-                                        dampingRatio = 0.85f,
-                                        stiffness = Spring.StiffnessMediumLow,
-                                    )
-                                    if (pushing) {
-                                        (slideInHorizontally(spec) { it / 4 } + fadeIn(tween(220)))
-                                            .togetherWith(slideOutHorizontally(spec) { -it / 5 } + fadeOut(tween(180)))
-                                    } else {
-                                        (slideInHorizontally(spec) { -it / 5 } + fadeIn(tween(220)))
-                                            .togetherWith(slideOutHorizontally(spec) { it / 4 } + fadeOut(tween(180)))
-                                    }
+                AnimatedContent(
+                    targetState = backStack.last(),
+                    contentKey = { s ->
+                        when (s) {
+                            is Screen.Home -> "home"
+                            is Screen.Search -> "search:${s.session.id}"
+                            is Screen.Detail -> "detail:${s.image.id}"
+                        }
+                    },
+                    transitionSpec = {
+                        val photoFlight = targetState is Screen.Detail || initialState is Screen.Detail
+                        val reduce = !motion
+                        when {
+                            reduce -> fadeIn(tween(160)) togetherWith fadeOut(tween(120))
+                            photoFlight -> fadeIn(tween<Float>(200)) togetherWith fadeOut(tween<Float>(200))
+                            else -> {
+                                val pushing = targetState is Screen.Search
+                                val spec = spring<IntOffset>(
+                                    dampingRatio = 0.85f,
+                                    stiffness = Spring.StiffnessMediumLow,
+                                )
+                                if (pushing) {
+                                    (slideInHorizontally(spec) { it / 4 } + fadeIn(tween(220)))
+                                        .togetherWith(slideOutHorizontally(spec) { -it / 5 } + fadeOut(tween(180)))
+                                } else {
+                                    (slideInHorizontally(spec) { -it / 5 } + fadeIn(tween(220)))
+                                        .togetherWith(slideOutHorizontally(spec) { it / 4 } + fadeOut(tween(180)))
                                 }
                             }
-                        },
-                        label = "screens",
-                    ) { screen ->
-                        CompositionLocalProvider(
-                            LocalSharedScope provides this@SharedTransitionLayout,
-                            LocalVisibilityScope provides this@AnimatedContent,
-                        ) {
-                            when (screen) {
-                                is Screen.Home, is Screen.Detail -> HomeScreen(
-                                    onSearch = ::openSearch,
-                                    onOpenSettings = { settingsOpen = true },
-                                    settingsOpen = settingsOpen,
-                                )
-
-                                is Screen.Search -> SearchScreen(
-                                    session = screen.session,
-                                    onSearch = ::openSearch,
-                                    onOpenImage = { push(Screen.Detail(it)) },
-                                    onBack = { pop() },
-                                    onOpenSettings = { settingsOpen = true },
-                                    settingsOpen = settingsOpen,
-                                )
-                            }
                         }
-                    }
+                    },
+                    label = "screens",
+                ) { screen ->
+                    CompositionLocalProvider(
+                        LocalSharedScope provides this@SharedTransitionLayout,
+                        LocalVisibilityScope provides this@AnimatedContent,
+                    ) {
+                        when (screen) {
+                            is Screen.Home -> HomeScreen(
+                                onSearch = ::openSearch,
+                                onOpenSettings = { settingsOpen = true },
+                                settingsOpen = settingsOpen,
+                            )
 
-                    // The photo, over the results it came from. A fade, because
-                    // the flight itself is the shared element — a slide on top of
-                    // it would be two movements for one gesture.
-                    AnimatedContent(
-                        targetState = detail,
-                        contentKey = { d -> d?.image?.id ?: "none" },
-                        modifier = Modifier.fillMaxSize(),
-                        transitionSpec = {
-                            val quick = if (motion) tween<Float>(220) else tween<Float>(1)
-                            fadeIn(quick) togetherWith fadeOut(quick)
-                        },
-                        label = "photo",
-                    ) { d ->
-                        if (d == null) {
-                            Box(Modifier.fillMaxSize())
-                        } else {
-                            CompositionLocalProvider(
-                                LocalSharedScope provides this@SharedTransitionLayout,
-                                LocalVisibilityScope provides this@AnimatedContent,
-                            ) {
-                                DetailScreen(
-                                    img = d.image,
-                                    onOpenImage = { push(Screen.Detail(it)) },
-                                    onBack = { pop() },
-                                    onOpenSettings = { settingsOpen = true },
-                                    settingsOpen = settingsOpen,
-                                )
-                            }
+                            is Screen.Search -> SearchScreen(
+                                session = screen.session,
+                                onSearch = ::openSearch,
+                                onOpenImage = { push(Screen.Detail(it)) },
+                                onBack = { pop() },
+                                onOpenSettings = { settingsOpen = true },
+                                settingsOpen = settingsOpen,
+                            )
+
+                            is Screen.Detail -> DetailScreen(
+                                img = screen.image,
+                                onOpenImage = { push(Screen.Detail(it)) },
+                                onBack = { pop() },
+                                onOpenSettings = { settingsOpen = true },
+                                settingsOpen = settingsOpen,
+                            )
                         }
                     }
                 }

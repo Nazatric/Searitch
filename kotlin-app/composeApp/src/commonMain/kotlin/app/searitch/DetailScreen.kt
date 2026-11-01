@@ -270,17 +270,7 @@ fun DetailScreen(
     // actually contains an Ultra HDR gain map. SDR sources remain ordinary SDR.
     PlatformHdrWindow(image = decodedHero, enabled = true)
 
-    // The photo sits on top of the results screen now, so it takes every tap:
-    // otherwise a press on bare leather would reach the grid underneath.
-    Column(
-        Modifier
-            .fillMaxSize()
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) { }
-            .leatherSurface(tall = true),
-    ) {
+    Column(Modifier.fillMaxSize().leatherSurface(tall = true)) {
         /* ── leather strap ── */
         Row(
             modifier = Modifier
@@ -621,7 +611,7 @@ fun DetailScreen(
                             }
                         } else {
                             itemsIndexed(rel, key = { _, r -> "rel-${r.id}" }) { index, r ->
-                                PhotoCard(r, index) { onOpenImage(it) }
+                                PhotoCard(r, index, shared = false) { onOpenImage(it) }
                             }
                         }
                 }

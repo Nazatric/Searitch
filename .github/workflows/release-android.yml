@@ -11,7 +11,7 @@ on:
     branches:
       # the working branch Arena is on; keep the last one too so a rebase or a
       # branch switch doesn't silently stop the build
-      - "arena/437bd433-searitch"
+      - "arena/c0796c2f-searitch"
     paths:
       - "kotlin-app/**"
       - ".github/workflows/release-android.yml"
@@ -247,7 +247,7 @@ jobs:
           cat > notes.md <<'EOF'
           ### Searitch 2.0.0
 
-          `versionCode 20` · `versionName 2.0.0`
+          `versionCode 21` · `versionName 2.0.0`
 
           **Wallpaper goes through your phone now.** The button used to call
           Android's wallpaper API directly: it set the picture and gave you no
