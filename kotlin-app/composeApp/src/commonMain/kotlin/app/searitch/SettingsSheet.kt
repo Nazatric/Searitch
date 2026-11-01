@@ -263,12 +263,17 @@ fun Cog(
  * the settings behind a button press.
  */
 @Composable
+/** The one green in the app: a source's dot, and nothing else. */
+private val SourceOk = Color(0xFF4F7D4A)
+
+@Composable
 fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
     if (!open) return
     val holder = LocalSettings.current
     val draft = holder.value
     fun update(next: AppSettings) = holder.save(next)
     var cacheBytes by remember { mutableStateOf(0L) }
+    var imageBytes by remember { mutableStateOf(0L) }
     var cacheBusy by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -276,6 +281,7 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
 
     LaunchedEffect(open) {
         cacheBytes = runCatching { FeedCache.sizeBytes() }.getOrDefault(0L)
+        imageBytes = runCatching { PlatformStore.imageCacheSize() }.getOrDefault(0L)
     }
 
     fun close() {
@@ -485,10 +491,97 @@ fun SettingsSheet(open: Boolean, onDismiss: () -> Unit) {
                         }
                     }
                     Hint("Photos stay cached while you browse, so returning to a search is instant.")
+
+                    Spacer(Modifier.width(2.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Images on this device",
+                                color = Ink.body,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (cacheBusy) "measuring…" else friendlySize(imageBytes),
+                                color = Ink.faint,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                            )
+                        }
+                        ActionChip(
+                            "Clear image cache",
+                            Modifier.fillMaxWidth(),
+                            enabled = !cacheBusy,
+                        ) {
+                            cacheBusy = true
+                            scope.launch {
+                                runCatching { PlatformStore.clearImageCache() }
+                                imageBytes = runCatching { PlatformStore.imageCacheSize() }.getOrDefault(0L)
+                                cacheBytes = runCatching { FeedCache.sizeBytes() }.getOrDefault(0L)
+                                cacheBusy = false
+                            }
+                        }
+                        Hint("Pictures are re-fetched on demand. Searches and settings are kept.")
+                    }
+                }
+
+                /*
+                 * What the app knows about each source right now: how long it
+                 * takes, how much it returned, whether it is being skipped. This
+                 * is the difference between a setting that claims to work and a
+                 * screen that shows you it does.
+                 */
+                Card("SOURCES") {
+                    var report by remember { mutableStateOf(Api.sourceReport()) }
+                    report.forEach { st ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when {
+                                            // Paused reads as a warning, not a
+                                            // failure: the app chose to rest it.
+                                            st.skipped -> Brass.base
+                                            st.latencyMs == 0L -> Ink.faint.copy(alpha = 0.35f)
+                                            st.lastOk -> SourceOk
+                                            else -> Ink.danger
+                                        },
+                                    ),
+                            )
+                            Spacer(Modifier.width(9.dp))
+                            Text(
+                                Api.sourceTitle(st.name),
+                                color = Ink.body,
+                                fontSize = 12.5.sp,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                when {
+                                    st.skipped -> "paused"
+                                    st.latencyMs == 0L -> "—"
+                                    else -> "${st.latencyMs} ms · ${st.lastResults}"
+                                },
+                                color = Ink.faint,
+                                fontSize = 10.5.sp,
+                            )
+                        }
+                    }
+                    ActionChip("Refresh", Modifier.fillMaxWidth(), enabled = true) {
+                        report = Api.sourceReport()
+                    }
+                    Hint("A source that fails twice rests for a few searches. Timeouts follow each source's own speed.")
                 }
 
                 Text(
-                    "SEARITCH · VERSION 1.5",
+                    "SEARITCH · VERSION ${BuildInfo.VERSION}",
                     style = TextStyle(
                         color = Ink.onLeatherSoft.copy(alpha = 0.8f),
                         fontFamily = cinzel(),

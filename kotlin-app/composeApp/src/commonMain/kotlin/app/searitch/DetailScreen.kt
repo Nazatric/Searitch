@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
@@ -133,6 +134,8 @@ private enum class SaveState { Idle, Saving, Saved, Failed }
 fun DetailScreen(
     img: SearitchImage,
     onOpenImage: (SearitchImage) -> Unit,
+    /** Search this colour — the same words as now, filtered to that hex. */
+    onFindColour: (String) -> Unit,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit,
     settingsOpen: Boolean,
@@ -245,6 +248,11 @@ fun DetailScreen(
     // one behind a cut-out is not.
     val decodedAlpha = remember(decodedHero) { decodedHero?.decodedAlpha() }
     val hasAlpha = alphaHint || decodedAlpha == true
+
+    // The colours the picture is made of, sampled once per decoded image.
+    val palette = remember(decodedHero) {
+        runCatching { decodedHero?.palette(5) }.getOrDefault(emptyList())
+    }
 
     /*
      * The frame is sized to the picture, and the picture is drawn whole.
@@ -432,6 +440,41 @@ fun DetailScreen(
                                     letterSpacing = 1.2.sp,
                                 )
                             }
+                        }
+                    }
+
+                    if (palette.isNotEmpty()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 12.dp, start = 4.dp, end = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        ) {
+                            Text(
+                                "COLOURS",
+                                color = Ink.faint,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.4.sp,
+                            )
+                            palette.forEach { rgb ->
+                                Box(
+                                    Modifier
+                                        .size(20.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(rgb))
+                                        .border(1.dp, Color.Black.copy(alpha = 0.28f), CircleShape)
+                                        .clickable {
+                                            haptics.tap()
+                                            onFindColour(hexString(rgb))
+                                        },
+                                )
+                            }
+                            Spacer(Modifier.width(2.dp))
+                            Text(
+                                "tap to search it",
+                                color = Ink.faint,
+                                fontSize = 10.sp,
+                            )
                         }
                     }
 

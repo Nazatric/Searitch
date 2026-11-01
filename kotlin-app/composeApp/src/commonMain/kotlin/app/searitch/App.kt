@@ -206,6 +206,18 @@ fun App(settings: SettingsState = remember { SettingsState.load() }) {
                             is Screen.Detail -> DetailScreen(
                                 img = screen.image,
                                 onOpenImage = { push(Screen.Detail(it)) },
+                                onFindColour = { hex ->
+                                    // Stay inside the words that are already on
+                                    // screen and narrow them by the colour: the
+                                    // picture was found by those words, so they
+                                    // are the right context for "more like this
+                                    // blue".
+                                    val search = backStack.lastOrNull { it is Screen.Search } as? Screen.Search
+                                    val query = search?.session?.query
+                                        ?: Api.subjectLabel(screen.image).ifBlank { Api.cleanQuery(screen.image.title) }
+                                    val base = search?.session?.filters ?: Filters()
+                                    openSearch(query, base.copy(color = "", colorHex = hex))
+                                },
                                 onBack = { pop() },
                                 onOpenSettings = { settingsOpen = true },
                                 settingsOpen = settingsOpen,

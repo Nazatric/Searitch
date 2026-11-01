@@ -254,7 +254,10 @@ fun SearchScreen(
 
     LaunchedEffect(gridState) {
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
-            .collect { last -> if (last >= sizeNow - 6) loadMoreNow() }
+            // Ask for the next page a little before the end: the wait then
+            // overlaps with the cards already on screen instead of happening
+            // in front of the user at the bottom of the grid.
+            .collect { last -> if (last >= sizeNow - 10) loadMoreNow() }
     }
 
     val facets = remember(session.results, session.filters) { buildFacets(session.results, session.filters) }

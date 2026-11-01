@@ -36,11 +36,14 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
 import kotlinx.coroutines.delay
 
 /* ───────────────────────── shared-element plumbing ───────────────────────
@@ -320,9 +323,34 @@ fun PhotoCard(
             // there as an empty well.
             val fallback = img.thumbFallback?.takeIf { it.isNotBlank() && it != img.cardPicture() }
             var usingFallback by remember(img.id) { mutableStateOf(false) }
+
+            /*
+             * Decode at card size.
+             *
+             * Without an explicit size Coil decodes at the *source* size and
+             * scales down for display: a 6000 px museum scan would be held in
+             * memory at 6000 px per card, and twenty of those is the memory of a
+             * small camera. Asking for twice the widest a card can be gives a
+             * sharp result on any density and a fraction of the footprint.
+             */
+            val platformContext = LocalPlatformContext.current
+            val density = LocalDensity.current
+            val cardPx = remember(density, settings.gridDensity) {
+                with(density) { (settings.gridDensity.minCardDp * 2).dp.roundToPx() }
+            }
+            val url = if (usingFallback && fallback != null) fallback else img.cardPicture()
+            val request = remember(url, cardPx, platformContext) {
+                ImageRequest.Builder(platformContext)
+                    .data(url)
+                    // A staggered card is at most twice its minimum width; the
+                    // tallest supported ratio is 2.8, and the extra headroom
+                    // costs nothing because the decode stops at the real size.
+                    .size(cardPx, cardPx * 2)
+                    .build()
+            }
             AsyncImage(
                 // the ratio-honest rendition, not the fixed-crop one
-                model = if (usingFallback && fallback != null) fallback else img.cardPicture(),
+                model = request,
                 onError = {
                     if (!usingFallback && fallback != null) usingFallback = true
                 },
