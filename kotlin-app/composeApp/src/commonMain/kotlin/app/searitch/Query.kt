@@ -50,9 +50,12 @@ object Query {
     ) {
         /** The parts of the plan the user should see, in their own words. */
         fun understood(): List<String> = buildList {
+            // `size` on its own would resolve to the list's own size inside
+            // buildList, so the plan's hint is named explicitly.
+            val sizeHint = this@Plan.size
             colour?.let { add("colour: ${labelOf(it)}") }
             type?.let { if (it != TypeFilter.ANY) add(it.label.lowercase()) }
-            size?.let { if (it != SizeFilter.ANY) add(it.label.lowercase()) }
+            sizeHint?.let { add(it.label.lowercase()) }
             if (intent != Intent.GENERAL) add(intent.label)
         }
 

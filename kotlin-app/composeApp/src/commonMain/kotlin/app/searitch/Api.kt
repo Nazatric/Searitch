@@ -581,7 +581,7 @@ object Api {
      * for six seconds, and one that needs four seconds is not cut off at three.
      */
     private fun budgetFor(name: String): Long {
-        val floor = when (name) {
+        val floor: Long = when (name) {
             "openverse" -> 4_000
             "bing" -> 5_000
             // Yandex renders a full page of results server-side; it is a big answer.
