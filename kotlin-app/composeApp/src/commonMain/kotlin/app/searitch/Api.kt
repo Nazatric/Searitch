@@ -28,9 +28,9 @@ import kotlinx.serialization.json.Json
 /**
  * Searitch search layer (common code — identical on Android and Wasm).
  *
- * Thirteen keyless sources, queried in parallel and merged as each one answers:
- * Bing (the open web), Openverse, Wikimedia Commons, Wallhaven, Flickr,
- * iNaturalist, NASA, the Met, the Art Institute of Chicago, the Cleveland
+ * Fourteen keyless sources, queried in parallel and merged as each one answers:
+ * Bing and Yandex (the open web), Openverse, Wikimedia Commons, Wallhaven,
+ * Flickr, iNaturalist, NASA, the Met, the Art Institute of Chicago, the Cleveland
  * Museum of Art, the Library of Congress, Europeana and the V&A.
  *
  * No source needs a key or an account. Filters are only applied where a source
@@ -511,6 +511,8 @@ object Api {
     private fun budgetFor(name: String): Long = when (name) {
         "openverse" -> 4_000
         "bing" -> 5_000
+        // Yandex renders a full page of results server-side; it is a big answer.
+        "yandex" -> 6_000
         "loc" -> 5_000
         else -> 3_500
     }
@@ -546,6 +548,7 @@ object Api {
     ): List<Pair<String, suspend () -> List<SearitchImage>>> {
         val all: List<Triple<ProviderFilter, String, suspend () -> List<SearitchImage>>> = listOf(
             Triple(ProviderFilter.BING, "bing") { searchBing(q, f, page) },
+            Triple(ProviderFilter.YANDEX, "yandex") { searchYandex(q, f, page) },
             Triple(ProviderFilter.OPENVERSE, "openverse") { searchOpenverse(q, f, page) },
             Triple(ProviderFilter.WIKIMEDIA, "wikimedia") { searchWikimedia(q, f, page) },
             Triple(ProviderFilter.WALLHAVEN, "wallhaven") { searchWallhaven(q, f, page) },
@@ -574,7 +577,8 @@ object Api {
                 async {
                     val r = runCatching { withTimeout(budgetFor(name)) { run() } }
                     recordResult(name, r.isSuccess)
-                    r.getOrDefault(emptyList())
+                    // Only results that answer the query are allowed through.
+                    gate(q, r.getOrDefault(emptyList()))
                 }
             }.awaitAll()
 
@@ -980,6 +984,128 @@ object Api {
         return out
     }
 
+    /* ══════════════════════════ Yandex Images ══════════════════════════════
+
+     Yandex is the second general-web engine, and the one this app was missing:
+     Bing answers `/images/async` with a *trending* set for some single words —
+     asking it for "android" returns "Another Round" film posters — while Yandex
+     answers the query it was given, on the server, in plain HTML. It reports
+     each picture's real title and dimensions, so cards from here are honest and
+     the size and orientation filters work on them.
+
+     Google was tried too and is not here: its image results are base64 data URIs
+     assembled by its own JavaScript, and the old `asearch=ichunk` endpoint that
+     used to hand back plain JSON now 404s. DuckDuckGo answers a datacentre with a
+     `botnet_challenge`, and Baidu returns `Forbid spider access` — none of the
+     three can be made to work from a plain HTTP client, so none is claimed. */
+
+    /**
+     * One result = one anchor that carries the picture's original URL, wrapping
+     * the thumbnail `<img>`. The three pieces are pulled separately because the
+     * attributes are not in a fixed order — the same reason this is safer than
+     * one long expression.
+     */
+    // Written as ordinary strings rather than raw ones: these patterns are full
+    // of quotes, and a raw string that ends in a quote is at best a puzzle.
+    private val YANDEX_LINK = Regex(
+        "<a[^>]*?img_url=([^\"&>]+)[^>]*?>(.*?)</a>",
+        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE),
+    )
+    private val IMG_SRC = Regex("<img[^>]*?\\ssrc=\"([^\"]+)\"", RegexOption.IGNORE_CASE)
+    private val IMG_ALT = Regex("<img[^>]*?\\salt=\"([^\"]*)\"", RegexOption.IGNORE_CASE)
+
+    /** The "1080×720" caption Yandex prints beside a result, when it is there. */
+    private val DIMENSIONS = Regex("(\\d{2,5})\\s*[x×]\\s*(\\d{2,5})")
+
+    private suspend fun searchYandex(q: String, f: Filters, page: Int): List<SearitchImage> {
+        if (f.license != LicenseFilter.ANY) return emptyList()
+        if (page > 6) return emptyList()
+
+        val url = "https://yandex.com/images/search?text=" + q.encodeURLParameter() +
+            (if (page > 1) "&p=" + (page - 1) else "")
+
+        val html = getTextOrThrow(url)
+        val out = LinkedHashMap<String, SearitchImage>()
+        for (m in YANDEX_LINK.findAll(html)) {
+            val original = decodeUrl(m.groupValues[1])
+            if (original.isBlank()) continue
+            val ext = extOfUrl(original)
+            if (ext !in BITMAP_TYPES || ext == "svg") continue
+            val inside = m.groupValues[2]
+            // A Yandex thumbnail is one of its own cached renditions; the original
+            // is the picture's real home, which is also what Download fetches.
+            val thumb = IMG_SRC.find(inside)?.groupValues?.get(1)
+                ?.replace("&amp;", "&")
+                ?.replace("\\/", "/")
+                ?.takeIf { it.startsWith("http") } ?: continue
+            val alt = IMG_ALT.find(inside)?.groupValues?.get(1)
+                .orEmpty()
+                .replace("&quot;", "\"")
+                .replace("&#39;", "'")
+                .replace("&amp;", "&")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+            // Dimensions sit in the same card, just after the link — so the
+            // search stops at the next card rather than picking up its numbers.
+            val after = html.substring(m.range.last + 1)
+            val nextCard = after.indexOf("<a ")
+            val tail = after.substring(0, if (nextCard in 0 until 400) nextCard else minOf(after.length, 400))
+            val dims = DIMENSIONS.find(tail)
+            val w = dims?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val h = dims?.groupValues?.get(2)?.toIntOrNull() ?: 0
+
+            val host = original.substringAfter("://").substringBefore('/').removePrefix("www.")
+            val img = SearitchImage(
+                id = "yandex:" + original.hashCode().toUInt().toString(16),
+                provider = "yandex",
+                // Yandex truncates long alt text mid-word with an ellipsis; the
+                // caption is still the page's own words, so it is used as is.
+                title = alt.ifBlank { host }.take(140),
+                thumb = thumb,
+                preview = thumb,
+                full = original,
+                width = w,
+                height = h,
+                filetype = ext,
+                sourceSite = host,
+                sourceUrl = original,
+                creator = null,
+                license = null,
+                tags = emptyList(),
+            )
+            out[original] = img
+        }
+        return out.values.toList()
+    }
+
+    /** Yandex percent-encodes the origin URL it echoes back in the link. */
+    private fun decodeUrl(raw: String): String {
+        var s = raw.replace("\\/", "/")
+            .replace("\\u0026", "&")
+            .replace("&amp;", "&")
+        if (!s.contains('%')) return s
+        return try {
+            buildString {
+                var i = 0
+                while (i < s.length) {
+                    val c = s[i]
+                    if (c == '%' && i + 2 < s.length) {
+                        val code = s.substring(i + 1, i + 3).toIntOrNull(16)
+                        if (code != null) {
+                            append(code.toChar())
+                            i += 3
+                            continue
+                        }
+                    }
+                    append(c)
+                    i++
+                }
+            }
+        } catch (e: Throwable) {
+            s
+        }
+    }
+
     private suspend fun searchBing(q: String, f: Filters, page: Int): List<SearitchImage> {
         val count = 35
         val first = (page - 1) * count + 1
@@ -1246,6 +1372,70 @@ object Api {
     /** First paint is gathered for this long so it can mix sources (round-robin). */
     private const val GATHER_MS = 320L
 
+    /* ─────────────────── does this result answer the query? ─────────────────── */
+
+    /**
+     * A search box that returns a beach for "android" is worse than one that
+     * returns less, and that is what was happening: Bing's `/images/async`
+     * answers some single words with a *trending* set that has nothing to do
+     * with the query — asking it for "android" hands back "Another Round" film
+     * posters — while other sources were being mixed in without ever being
+     * checked against the words that were typed.
+     *
+     * So every result is scored against the query, and a result that mentions
+     * none of it anywhere (title, site, page address, file address, tags) is
+     * dropped. Where a whole source comes back like that, the source answered
+     * with something other than the query — that is a junk batch, and the whole
+     * batch goes rather than filling the grid with noise.
+     */
+    private val GATE_STOP = setOf(
+        "the", "a", "an", "and", "or", "of", "for", "in", "on", "at", "to", "with",
+        "my", "me", "image", "images", "photo", "photos", "picture", "pictures",
+        "pic", "pics", "wallpaper", "wallpapers", "hd", "4k", "free",
+    )
+
+    private fun queryTerms(q: String): List<String> {
+        val all = q.lowercase()
+            .split(Regex("[^\\p{L}\\p{N}]+"))
+            .filter { it.length > 1 }
+            .distinct()
+        // "wallpaper" is filler in "ocean wallpaper", but when it is the whole
+        // query it is the only thing the results can be checked against.
+        return all.filterNot { it in GATE_STOP }.ifEmpty { all }
+    }
+
+    /** How many of [terms] this result actually mentions. */
+    private fun relevanceOf(img: SearitchImage, terms: List<String>): Int {
+        if (terms.isEmpty()) return 1
+        val hay = buildString {
+            append(img.title.lowercase()).append(' ')
+            append(img.sourceSite.lowercase()).append(' ')
+            append(img.sourceUrl.lowercase()).append(' ')
+            append(img.full.lowercase()).append(' ')
+            append(img.creator?.lowercase().orEmpty()).append(' ')
+            append(img.tags.joinToString(" ").lowercase())
+        }.replace('-', ' ').replace('_', ' ').replace('/', ' ')
+        var hits = 0
+        for (t in terms) if (hay.contains(t)) hits++
+        return hits
+    }
+
+    /**
+     * Drops everything that doesn't answer [q], and returns what survived in
+     * order of how much of the query it mentions. A batch where almost nothing
+     * matches is discarded whole.
+     */
+    private fun gate(q: String, list: List<SearitchImage>): List<SearitchImage> {
+        val terms = queryTerms(q)
+        if (terms.isEmpty() || list.isEmpty()) return list
+        val scored = list.map { it to relevanceOf(it, terms) }
+        val kept = scored.filter { it.second > 0 }
+        // Fewer than one in eight matching means the source answered a different
+        // question — a trending page, a default feed — not that the query is rare.
+        if (list.size >= 8 && kept.size * 8 < list.size) return emptyList()
+        return kept.sortedByDescending { it.second }.map { it.first }
+    }
+
     private fun passesFilters(img: SearitchImage, f: Filters) =
         img.thumb.isNotEmpty() && img.full.isNotEmpty() &&
             matchesType(img, f.type) && matchesAspect(img, f.aspect) && matchesSize(img, f.size) &&
@@ -1294,7 +1484,8 @@ object Api {
                 val r = runCatching { withTimeout(budgetFor(name)) { run() } }
                 recordResult(name, r.isSuccess)
                 lock.withLock {
-                    val fresh = r.getOrDefault(emptyList()).filter { passesFilters(it, filters) && seen.add(it.full) }
+                    val gated = gate(q, r.getOrDefault(emptyList()))
+                    val fresh = gated.filter { passesFilters(it, filters) && seen.add(it.full) }
                     if (fresh.isNotEmpty()) {
                         if (flushed) {
                             send(fresh)

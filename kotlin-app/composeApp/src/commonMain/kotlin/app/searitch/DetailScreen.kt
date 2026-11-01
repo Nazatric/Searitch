@@ -13,7 +13,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image as ComposeImage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,9 +52,11 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -153,6 +156,9 @@ fun DetailScreen(
     // Pinch-to-scale, and the readout that says how far in you are. ImageSearchMan
     // shows the same thing; without it a zoomed picture gives no clue where you are.
     var zoom by remember(img.id) { mutableFloatStateOf(1f) }
+    var pan by remember(img.id) { mutableStateOf(Offset.Zero) }
+    // Read inside the gesture loop so widening the pinch doesn't restart it.
+    val zoomedNow = rememberUpdatedState(zoom)
     val uriHandler = LocalUriHandler.current
     val navPad = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val platformContext = LocalPlatformContext.current
@@ -320,16 +326,22 @@ fun DetailScreen(
                         Box(
                             Modifier
                                 .fillMaxSize()
-                                .pointerInput(img.id) {
-                                    detectTransformGestures { _, _, pinch, _ ->
-                                        zoom = (zoom * pinch).coerceIn(1f, 6f)
-                                    }
-                                },
+                                .photoGestures(
+                                    key = img.id,
+                                    zoomed = { zoomedNow.value > 1.005f },
+                                    onZoom = { pinch -> zoom = (zoom * pinch).coerceIn(1f, 6f) },
+                                    onPan = { pan += it },
+                                ),
                         ) {
                             Box(
                                 Modifier
                                     .fillMaxSize()
-                                    .graphicsLayer { scaleX = zoom; scaleY = zoom },
+                                    .graphicsLayer {
+                                        scaleX = zoom
+                                        scaleY = zoom
+                                        translationX = pan.x
+                                        translationY = pan.y
+                                    },
                             ) {
                                 ComposeImage(
                                     painter = firstPainter,
@@ -355,7 +367,7 @@ fun DetailScreen(
                                     .align(Alignment.TopStart)
                                     .padding(8.dp)
                                     .clip(CircleShape)
-                                    .clickable { zoom = 1f }
+                                    .clickable { zoom = 1f; pan = Offset.Zero }
                                     .background(Color(0xCC1C1008))
                                     .padding(horizontal = 9.dp, vertical = 5.dp),
                             ) {
@@ -583,6 +595,52 @@ fun DetailScreen(
         }
     }
 }
+
+/**
+ * Two fingers zoom the picture; at fit size one finger still scrolls the page,
+ * and once zoomed in one finger pans it.
+ *
+ * The first version of this used the general transform detector, which treats a
+ * single-finger drag as a pan: it swallowed the gesture, so the photo panel —
+ * the biggest thing on the screen — could not be dragged and the page only
+ * scrolled from the thumbnail strip below it. This waits for a second finger
+ * before it consumes anything, so the picture scrolls like every other part of
+ * the page and pinching still works.
+ */
+private fun Modifier.photoGestures(
+    key: Any,
+    zoomed: () -> Boolean,
+    onZoom: (Float) -> Unit,
+    onPan: (Offset) -> Unit,
+): Modifier =
+    pointerInput(key) {
+        awaitEachGesture {
+            do {
+                val event = awaitPointerEvent()
+                val pressed = event.changes.filter { it.pressed }
+                when {
+                    pressed.size >= 2 -> {
+                        // A real pinch is ours.
+                        val pinch = event.calculateZoom()
+                        if (pinch != 1f) {
+                            onZoom(pinch)
+                            pressed.forEach { it.consume() }
+                        }
+                    }
+                    // One finger pans only once the picture is bigger than its
+                    // frame; at fit size it stays with the page's scroll.
+                    zoomed() && pressed.size == 1 -> {
+                        val change = pressed.first()
+                        val delta = change.position - change.previousPosition
+                        if (delta != Offset.Zero) {
+                            onPan(delta)
+                            change.consume()
+                        }
+                    }
+                }
+            } while (event.changes.any { it.pressed })
+        }
+    }
 
 /**
  * The quiet sibling of [BrassButton]: same paper field as SOURCE, for actions

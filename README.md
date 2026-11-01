@@ -1,6 +1,6 @@
 <img src="docs/banner.png" alt="Searitch" width="100%">
 
-**Search anything.** One query, thirteen image sources answering at once — the
+**Search anything.** One query, fourteen image sources answering at once — the
 open web alongside open-access libraries and museums. No API keys, no accounts,
 no server in between. One Kotlin codebase builds the Android app and the web app.
 
@@ -20,13 +20,14 @@ no server in between. One Kotlin codebase builds the Android app and the web app
 
 ## What it does
 
-Type a word, get pictures. Thirteen sources are queried at once and their results
+Type a word, get pictures. Fourteen sources are queried at once and their results
 stream in as each one answers, so the first photos appear before the slowest
-site has finished.
+site has finished — and every result is checked against the words you typed, so
+a source that answers with something else entirely contributes nothing.
 
 | | |
 | --- | --- |
-| **Thirteen sources** | Bing (full web), Openverse, Wikimedia Commons, Wallhaven, Flickr, iNaturalist, NASA, The Met, Art Institute of Chicago, Cleveland Museum of Art, Library of Congress, Europeana, the V&A |
+| **Fourteen sources** | Bing and Yandex (full web), Openverse, Wikimedia Commons, Wallhaven, Flickr, iNaturalist, NASA, The Met, Art Institute of Chicago, Cleveland Museum of Art, Library of Congress, Europeana, the V&A |
 | **Filters** | file type, orientation, size, twelve-colour palette, licence, source, safe search, anti-AI |
 | **Smart facets** | the app counts what it actually got back and offers drill-downs with real numbers — *JPG only 12*, *High-res 7* — instead of guessing |
 | **Detail view** | full image, creator, licence, dimensions, download, similar images |
@@ -219,7 +220,7 @@ Android-only build.
 ```text
 kotlin-app/composeApp/src/
   commonMain/kotlin/app/searitch/
-    Api.kt            thirteen sources, streaming aggregation, filters, related
+    Api.kt            fourteen sources, relevance gate, filters, related
     App.kt            back stack, screen transitions, session host
     SearchScreen.kt   results grid, facets, filter sheet
     DetailScreen.kt   hero image, metadata, download, similar
