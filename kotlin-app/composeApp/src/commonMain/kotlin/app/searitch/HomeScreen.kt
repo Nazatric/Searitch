@@ -49,6 +49,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 
+/** What the landing screen offers before you have any history of your own. */
+private val STARTERS = listOf(
+    "moonrise",
+    "bengal tiger",
+    "art nouveau poster",
+    "deep sea",
+    "brutalist architecture",
+    "wildflowers",
+    "vintage map",
+    "aurora",
+)
+
 /** Minimal landing screen: a cream wordmark pressed into the hide, and one search field. */
 @Composable
 fun HomeScreen(
@@ -216,6 +228,36 @@ fun HomeScreen(
                                 .border(1.dp, Ink.onLeatherSoft.copy(alpha = 0.22f), CircleShape)
                                 .padding(horizontal = 10.dp, vertical = 5.dp),
                         )
+                    }
+                }
+            }
+
+            if (recents.isEmpty()) {
+                // First run: something to press that is a real search, not a
+                // demo. These are ordinary words that all fourteen sources have
+                // material for.
+                Column(
+                    Modifier.padding(top = 26.dp).widthIn(max = 460.dp).fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        "TRY",
+                        style = TextStyle(
+                            color = Ink.onLeatherSoft,
+                            fontFamily = cinzel(),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            letterSpacing = 2.5.sp,
+                        ),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        STARTERS.forEach { q ->
+                            SearitchChip(q, selected = false) { go(q) }
+                        }
                     }
                 }
             }

@@ -39,6 +39,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -129,17 +130,30 @@ fun BrassButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit
 
 /** A recessed well set into the leather, holding a gold icon. */
 @Composable
-fun WellButton(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun WellButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** A dead end (first picture, last picture) still shows, but doesn't invite. */
+    enabled: Boolean = true,
+    size: Dp = 44.dp,
+    content: @Composable () -> Unit,
+) {
     val interaction = remember { MutableInteractionSource() }
     val shape = RoundedCornerShape(12.dp)
     Box(
         modifier = modifier
-            .size(44.dp)
+            .size(size)
+            .graphicsLayer { alpha = if (enabled) 1f else 0.4f }
             .pressable(interaction)
             .clip(shape)
             .background(Color(0x66160B04))
             .border(1.dp, Color(0x66000000), shape)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) { content() }
 }

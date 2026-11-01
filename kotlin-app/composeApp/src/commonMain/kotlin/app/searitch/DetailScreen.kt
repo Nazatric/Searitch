@@ -137,6 +137,11 @@ fun DetailScreen(
     onOpenImage: (SearitchImage) -> Unit,
     /** Search this colour — the same words as now, filtered to that hex. */
     onFindColour: (String) -> Unit,
+    /** Where this picture sits in the strip it was opened from, if it did. */
+    position: Int = -1,
+    total: Int = 0,
+    onPrev: (() -> Unit)? = null,
+    onNext: (() -> Unit)? = null,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit,
     settingsOpen: Boolean,
@@ -307,6 +312,28 @@ fun DetailScreen(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            // Stepping through the strip the photo came from, without going back
+            // and losing your place in it.
+            if (position > 0 && total > 0) {
+                Text(
+                    "${position + 1}/$total",
+                    color = Ink.onLeatherSoft,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                onPrev?.let { prev ->
+                    WellButton(enabled = position > 0, size = 34.dp, onClick = prev) {
+                        Icon(Ico.Back, Ink.thread, Modifier.size(16.dp))
+                    }
+                }
+                onNext?.let { next ->
+                    Box(Modifier.graphicsLayer { rotationZ = 180f }) {
+                        WellButton(enabled = position < total - 1, size = 34.dp, onClick = next) {
+                            Icon(Ico.Back, Ink.thread, Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
             GearButton(onClick = onOpenSettings, open = settingsOpen)
         }
 
