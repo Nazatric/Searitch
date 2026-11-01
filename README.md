@@ -22,15 +22,29 @@ no server in between. One Kotlin codebase builds the Android app and the web app
 
 Type a word, get pictures. Fourteen sources are queried at once and their results
 stream in as each one answers, so the first photos appear before the slowest
-site has finished — and every result is checked against the words you typed, so
-a source that answers with something else entirely contributes nothing.
+site has finished.
+
+The words are read before anything is asked. A format word — `png`,
+`transparent`, `svg` — is a statement about the file, so it is applied and shown
+as a chip you can remove. Colour, size and intent words (`red`, `4k`,
+`wallpaper`) are offered as a suggestion instead of narrowing the search behind
+your back, because "red panda" is not a request for red things.
+
+Results are then scored — how much of the query the title names, then the
+source's own tags, then how large the picture is, whether its shape suits what
+was asked, and how much the source knows about it — mixed so no single site owns
+a page, and stripped of near-copies. A result that answers nothing is still
+dropped.
 
 | | |
 | --- | --- |
 | **Fourteen sources** | Bing and Yandex (full web), Openverse, Wikimedia Commons, Wallhaven, Flickr, iNaturalist, NASA, The Met, Art Institute of Chicago, Cleveland Museum of Art, Library of Congress, Europeana, the V&A |
 | **Filters** | file type, orientation, size, colour (twelve named swatches and a full wheel), licence, source, safe search, anti-AI |
+| **Reads the query** | format words applied as a chip, colour/size/intent offered as one tap, nothing narrowed without being shown |
+| **Ranked results** | title match, curated tags, resolution, shape and source knowledge decide the order; near-copies collapse; no source owns a page |
 | **Smart facets** | the app counts what it actually got back and offers drill-downs with real numbers — *JPG only 12*, *High-res 7* — instead of guessing |
-| **Detail view** | full image, creator, licence, dimensions, download, similar images, share, and "set as wallpaper" through your phone's own setter |
+| **Refinements** | tags shared by several returned pictures, offered as chips: the catalogue's vocabulary, not a generated guess |
+| **Detail view** | full image, creator, licence, dimensions, the picture's own colours and tags, previous/next through the strip it came from, download, similar images, share, and "set as wallpaper" through your phone's own setter |
 | **Downloads** | streamed straight into `Download/Searitch` through MediaStore on Android 10+, no permission needed |
 
 Each request goes from your device straight to the source.
@@ -121,6 +135,16 @@ tinted.
 Type is **Cinzel**, bundled with the app. Every icon is a vector drawn at run
 time; there is no icon font anywhere in the APK.
 
+## Sources, measured
+
+Each source carries a moving average of how long it takes, and its timeout
+follows that measurement instead of a fixed guess — a source answering in 400 ms
+is not waited on for six seconds. A source that fails twice rests for the next
+few searches, so a dead upstream can't stall a grid.
+
+Settings → Sources shows every one of them, live: its speed, how many pictures
+it returned, and whether it is resting.
+
 ## Settings
 
 The gear sits in the top corner of every screen and turns a third of a rotation
@@ -136,7 +160,9 @@ everything applies live — no Apply button, no draft state to lose.
 | Motion & feel | animations, haptics |
 | Downloads | the original file, or a ≤2000 px preview |
 | Search defaults | safe search, anti-AI — applied to new searches |
-| Cache | keep searched feeds, live size, clear |
+| Cache | keep searched feeds, live feed size, live image-cache size, clear either |
+| Search defaults | safe search, AI block, and whether the query is read at all |
+| Sources | every source, its measured speed, its last result count, whether it is resting |
 
 A live sample at the top of the sheet paints the chosen hide, stock and metal
 exactly as the app will, so a tone is judged on the real thing and not on a
@@ -146,6 +172,10 @@ swatch.
 
 Home → Search → Detail, on a real back stack. Android back and gesture navigation
 pop it; at Home they close the app, the way any other app behaves.
+
+A photo can be stepped through the strip it was opened from — the grid, or the
+similar-photos strip of another photo — without leaving it, and Back always
+returns to where you were.
 
 Returning from a photo lands exactly where you left — same results, same paging,
 same scroll position. The photo opens *over* the results rather than replacing
@@ -169,8 +199,8 @@ Grab the APK for your device from [Releases](../../releases/latest).
 
 | File | For |
 | --- | --- |
-| `Searitch-v2.0.0-arm64-v8a.apk` | almost every phone since 2017 |
-| `Searitch-v2.0.0-armeabi-v7a.apk` | older 32-bit devices |
+| `Searitch-v2.1.0-arm64-v8a.apk` | almost every phone since 2017 |
+| `Searitch-v2.1.0-armeabi-v7a.apk` | older 32-bit devices |
 
 Release APKs are signed with the key committed at
 `kotlin-app/keystore/searitch-release.keystore`, so every release carries the same
@@ -231,6 +261,8 @@ Android-only build.
 kotlin-app/composeApp/src/
   commonMain/kotlin/app/searitch/
     Api.kt            fourteen sources, relevance gate, filters, related
+    Query.kt          reads the query: format, colour, size, intent, refinements
+    Ranker.kt         scoring, cross-source mixing, near-copy collapsing
     App.kt            back stack, screen transitions, session host
     SearchScreen.kt   results grid, facets, filter sheet
     ColorWheel.kt     the colour wheel, HSV conversion, hex round-trip
